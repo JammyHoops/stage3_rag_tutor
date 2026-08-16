@@ -39,6 +39,7 @@ data/curriculum/*
 !data/curriculum/.gitkeep
 data/stage1/*
 !data/stage1/.gitkeep
+!data/stage1/stage1_profiles.synthetic.csv
 data/stage2_inbox/*
 !data/stage2_inbox/.gitkeep
 data/stage2_archive/*

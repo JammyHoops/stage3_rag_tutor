@@ -35,6 +35,16 @@ silently) but no score is returned — the caller must NOT guess a value
 and must skip calling `record_observation` for that turn. Not a fail-
 crash, but not a fail-silent-wrong-data either.
 
+DONE (2026-08-16): ``build_opening_prompt`` now accepts an optional
+``profile_note`` — the one genuinely cold-start moment for Stage 1 data
+(see ``tutor/context_builder.py``'s "DONE" note and ``chat_session.py::
+start_diagnostic`` for why it lives here and not in the normal-tutoring
+path). Reuses ``prompt_template.py``'s ``_guard``/``ALLOWED_PROFILE_FIELDS``
+directly rather than duplicating the forbidden-field check. Not threaded
+into ``build_grading_prompt`` — the note is about framing the OPENING
+question's tone, not re-injected into every grading turn of the same
+round.
+
 TODO:
     [ ] Diagnostic questions currently aren't guaranteed non-repeating
         beyond "the LLM can see the prior questions in this prompt" — no
@@ -49,9 +59,10 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Optional, Sequence
+from typing import Any, Mapping, Optional, Sequence
 
 from .attribution import build_attributions
+from .prompt_template import ALLOWED_PROFILE_FIELDS, _guard
 
 logger = logging.getLogger(__name__)
 
@@ -98,13 +109,37 @@ def _chunk_doc_ids(curriculum_chunks: Sequence[dict[str, Any]]) -> list[str]:
 
 
 def build_opening_prompt(
-    subject: str, topic: str, curriculum_chunks: Sequence[dict[str, Any]]
+    subject: str,
+    topic: str,
+    curriculum_chunks: Sequence[dict[str, Any]],
+    profile_note: Mapping[str, Any] | None = None,
 ) -> DiagnosticPrompt:
-    """The very first message of a diagnostic round — no prior answer to grade."""
+    """The very first message of a diagnostic round — no prior answer to grade.
+
+    ``profile_note``, when given, may contain only ALLOWED_PROFILE_FIELDS
+    (same guard as prompt_template.py's normal-turn path) and renders as
+    a TEACHING NOTE line — the one place Stage 1 data is allowed to
+    influence a prompt, since this is the genuinely cold-start moment
+    (see context_builder.py's module docstring).
+    """
+    profile_note = dict(profile_note or {})
+    _guard(profile_note, "profile_note")
+    unexpected = set(profile_note) - set(ALLOWED_PROFILE_FIELDS)
+    if unexpected:
+        raise ValueError(
+            f"profile_note contains non-allowed fields {sorted(unexpected)}; "
+            f"allowed: {ALLOWED_PROFILE_FIELDS}"
+        )
+
     user = (
         f"SUBJECT: {subject}\nTOPIC: {topic}\n\n"
         f"CONTEXT (curriculum extracts):\n{_format_context(curriculum_chunks)}\n\n"
-        "Ask ONE short question to check the student's starting "
+        + (
+            f"TEACHING NOTE: {profile_note['scaffolding_note']}\n\n"
+            if profile_note.get("scaffolding_note")
+            else ""
+        )
+        + "Ask ONE short question to check the student's starting "
         f"understanding of {topic!r}. Output only the question — no "
         "preamble, no greeting, no answer."
     )

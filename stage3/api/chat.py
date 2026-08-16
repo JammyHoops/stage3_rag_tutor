@@ -12,9 +12,10 @@ TODO:
 
 DONE: POST /conversations/{id}/messages no longer 501s for normal
 tutoring — redact() and summarise_state() are both implemented now (see
-tutor/chat_session.py, tutor/context_builder.py). It still 501s if a
-future NotImplementedError is hit (e.g. profile_to_note, for students
-with a real Stage 1 profile — not exercised today, no data ingested).
+tutor/chat_session.py, tutor/context_builder.py). The 501 branch is kept
+as a general safety net for any future NotImplementedError, not because
+one is currently expected — profile_to_note (2026-08-16) was the last
+one and is real now too, see tutor/context_builder.py.
 
 DONE (2026-08-14): every endpoint that can trigger an LLM call
 (POST /conversations, /reassess, /messages) now catches
@@ -92,7 +93,7 @@ def get_conversations(student_id: str, subject: Optional[str] = None):
 
 
 @router.post("/conversations")
-def post_conversation(body: ConversationCreate):
+def post_conversation(body: ConversationCreate, request: Request):
     """Get-or-create: idempotent per (student, subject, topic) — see
     conversations/store.py's module docstring. Safe to call every time a
     topic is clicked in the UI; never creates a duplicate thread.
@@ -100,7 +101,10 @@ def post_conversation(body: ConversationCreate):
     On a genuine first creation, synchronously starts the diagnostic
     round (tutor speaks first — see tutor/chat_session.py::
     start_diagnostic) so the opening question is already there by the
-    time the frontend fetches messages.
+    time the frontend fetches messages. This is the ONLY call site that
+    passes student_id/profiles into start_diagnostic — see that
+    function's docstring for why: this is the one genuinely cold-start
+    moment Stage 1 data is allowed to touch anything.
 
     Also retries the opening question on an EXISTING conversation that
     never actually got one (0 questions asked, still 'pending') — the
@@ -123,7 +127,13 @@ def post_conversation(body: ConversationCreate):
     )
     if needs_opening_question:
         try:
-            start_diagnostic(conversation_id, body.subject, body.topic)
+            start_diagnostic(
+                conversation_id,
+                body.subject,
+                body.topic,
+                student_id=body.student_id,
+                profiles=request.app.state.profiles,
+            )
         except LLMGenerationError:
             raise HTTPException(status_code=503, detail=_LLM_UNAVAILABLE_DETAIL)
         conversation = get_conversation(conversation_id)
@@ -135,7 +145,13 @@ def post_conversation_reassess(conversation_id: int):
     """Explicit "Re-check my understanding" — starts a fresh diagnostic
     round on an EXISTING thread (not a new conversation), per the
     one-thread-per-topic decision. See conversations/store.py::
-    reset_diagnostic and tutor/chat_session.py::start_diagnostic."""
+    reset_diagnostic and tutor/chat_session.py::start_diagnostic.
+
+    Deliberately does NOT pass student_id/profiles to start_diagnostic —
+    a re-check means the student already has tutoring history, so this
+    is no longer "cold start" in the sense Stage 1 data is meant for
+    (see start_diagnostic's own docstring). Not a missed wiring spot.
+    """
     conversation = get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found.")
@@ -171,7 +187,7 @@ def get_conversation_messages(conversation_id: int):
 
 
 @router.post("/conversations/{conversation_id}/messages")
-def post_conversation_message(conversation_id: int, body: MessageCreate, request: Request):
+def post_conversation_message(conversation_id: int, body: MessageCreate):
     conversation = get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found.")
@@ -183,7 +199,6 @@ def post_conversation_message(conversation_id: int, body: MessageCreate, request
             topic=conversation["topic"],
             conversation_id=conversation_id,
             student_message=body.text,
-            profiles=request.app.state.profiles,
             diagnostic_status=conversation["diagnostic_status"],
             diagnostic_questions_asked=conversation["diagnostic_questions_asked"],
         )

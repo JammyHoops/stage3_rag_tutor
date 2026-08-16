@@ -1,8 +1,16 @@
 # Stage 3 — What's needed from the Stage 1 export, and why
 
-Status: **blocking** — this is the one remaining piece of work that only
-you can unblock (ethics approval + the real Colab pipeline output), not
-something further coding on my side can substitute for.
+Status: **RESOLVED, 2026-08-16** — a synthetic fixture matching the real
+Stage 1 pipeline's actual output landed
+(`data/stage1/stage1_profiles.synthetic.csv`), and the implementation
+described as "what happens once this lands" at the bottom of this
+document is built and live-verified — see README's "Stage 1 wiring"
+section for the full mechanism. Kept below as the historical record of
+what was asked for vs. what was actually decided (the real schema
+differs in a few small, worth-knowing ways from what was speculated
+here — see the summary at the very bottom). Ethics approval for a REAL
+(non-synthetic) export is still a separate, ongoing institutional
+process, unaffected by this.
 
 Scope: the CSV handoff from Stage 1 (learner-profile / attainment-gap
 analysis over the LAET extract) to Stage 3 (this tutor). Does not cover
@@ -103,3 +111,31 @@ with synthetic rows matching the real shape, is enough to build against):
 
 None of that needs anything further from you beyond the schema itself —
 this document is the complete ask.
+
+## What actually happened (2026-08-16) — real schema vs. this speculation
+
+Worth recording honestly, since a few things landed differently than
+guessed above:
+
+- **Per-subject flag, settled as speculated**: real field is
+  `flag_status` (`none`/`provisional`/`confirmed`), one row per
+  (student_id, subject) — matches the "per-subject, not one blanket
+  flag" requirement above exactly.
+- **The open "raw residual vs. pre-bucketed" question resolved as
+  recommended, but more simply than expected**: the user confirmed Stage
+  1 resolves magnitude internally *before* ever assigning a flag — so
+  `flag_status` alone needed no companion magnitude field at all for the
+  note. A second field, `attainment_band` (`well_below`/`below`/
+  `in_line`/`above`), exists anyway and turned out to have a different,
+  equally real use: seeding an initial mastery estimate (see README's
+  "Stage 1 wiring" section) — not something anticipated here.
+- **`profile_to_note` did NOT end up wired into `build_context` at all**
+  — a real finding while implementing item 1 above: `build_context` is
+  only ever called after a topic's diagnostic has already completed and
+  already written real mastery data, so it's structurally never cold
+  start there. The actual cold-start moment is diagnostic START
+  (`chat_session.py::start_diagnostic`), which is where the note (and
+  the new mastery-prior seed) actually got wired instead. Item 3 above
+  (foundation-tier trigger) is still NOT built — genuinely separate,
+  still blocked on the prerequisites-graph decision noted elsewhere,
+  untouched by this.

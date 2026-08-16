@@ -88,27 +88,21 @@ transmitted) once the `NotImplementedError` stubs are filled.
 
 ## Deliberate fail-closed points
 
-One function still raises `NotImplementedError` **on purpose** so that
-placeholder behaviour cannot silently reach evaluated output:
+This section originally tracked functions that raised `NotImplementedError`
+**on purpose**, so placeholder behaviour could never silently reach
+evaluated output. As of 2026-08-16, none remain — kept here as a record of
+what those were and how each was actually resolved, not left open:
 
-1. `tutor.context_builder.profile_to_note` — Stage 1 profile → scaffolding
-   note is a separate design decision from mastery (below) and hasn't been
-   made; safe today only because no Stage 1 data is ingested yet
-   (`get_profile` returns `None` for every student, so this branch is
-   never actually exercised — see `data/stage1/`).
-
-   **Note (2026-08-14): this is NOT the same job it looked like it was.**
-   `profile_to_note` was originally scoped as a fixed disability-category
-   → scaffolding-method lookup. Real research (SEND Code of Practice, EEF
-   SEND guidance — see
-   [`docs/design/stage3-explanation-method-design.md`](docs/design/stage3-explanation-method-design.md))
-   showed that design misrepresents the evidence base, so that job has
-   been done differently and for real: `student_state/
-   explanation_method.py` tracks per-student explanation-method efficacy
-   (Thompson sampling, Beta-Bernoulli) instead of a category table — see
-   the "Explanation-method selection" section below. `profile_to_note`
-   itself is untouched; it's still gated on the separate, still-unmade
-   Stage 1 export-schema decision, and stays the one remaining stub.
+1. ~~`tutor.context_builder.profile_to_note`~~ **Done (2026-08-16)** — see
+   the "Stage 1 wiring" section below for the full mechanism. Worth
+   recording what this function was NOT, since an earlier note here said
+   so at length: it is not a disability-category → scaffolding-method
+   lookup (that design was rejected on SEND Code of Practice / EEF
+   grounds — see
+   [`docs/design/stage3-explanation-method-design.md`](docs/design/stage3-explanation-method-design.md)
+   and the "Explanation-method selection" section below, which does that
+   job instead). `profile_to_note` ended up being a much narrower thing:
+   a `flag_status` → one-time diagnostic-opening tone note, nothing else.
 
 `redaction.redact` (re-exported by `stage2_bridge.intake` for the Stage 2
 path; also called directly by the typed-chat pipeline) is **no longer a
@@ -193,17 +187,18 @@ always-failing client.
    above. Mastery-decay-with-inactivity is a separate, still-open
    question (not part of this).
 4. ~~`tutor/context_builder.py` — state summary~~ **Done** (bucketed
-   text, see above). Query formulation is still open. `profile_note`
-   remains the one fail-closed stub — but the adaptive-teaching job it
-   was meant to cover is now handled separately and for real, see
-   "Explanation-method selection" below and the fail-closed section's
-   2026-08-14 note.
+   text, see above). Query formulation is still open. ~~`profile_note`
+   remains the one fail-closed stub~~ **Done** (2026-08-16) — see the
+   "Stage 1 wiring" section below; the adaptive-teaching job it originally
+   looked like it should cover is handled separately, for real, by
+   "Explanation-method selection" below.
 5. ~~`tutor/prompt_template.py` — pedagogy instructions~~ **Done**
    (2026-08-15) — see the "Pedagogy instructions" section below. Two
    new guarded fields also added (2026-08-14): `explanation_method`,
    `pending_understanding_check` — see the explanation-method section.
-   `ALLOWED_PROFILE_FIELDS` finalisation is still open (blocked on the
-   Stage 1 export schema, same as `profile_to_note`).
+   ~~`ALLOWED_PROFILE_FIELDS` finalisation is still open~~ **Done**
+   (2026-08-16) — real schema landed, and the tuple itself needed no
+   change (it was already correctly scoped to just `scaffolding_note`).
 6. ~~`llm/client.py` — provider decision + concrete client + token logging~~
    **Done**: Google AI Studio / Gemini via `google-genai`, `GeminiLLM`,
    token-usage logging. ~~Empty-answer failure path~~ **Done** (see
@@ -548,8 +543,11 @@ blocks a real tutoring turn uses (`search_kb` → `summarise_state` →
 (mastery writes, explanation-method Thompson sampling); routing
 synthetic scenarios through it would pollute real per-student tables and
 burn real Thompson-sampling draws for nothing. This also cleanly
-sidesteps `profile_to_note` (still the one fail-closed stub) —
-`profile_note` is built directly from each scenario's `scaffolding_note`.
+sidesteps `profile_to_note` entirely (real now, see "Stage 1 wiring"
+below, but only ever called from diagnostic-opening, not this path) —
+`profile_note` is built directly from each scenario's `scaffolding_note`
+and passed straight to `build_prompt`, whose `profile_note` parameter
+is unaffected by that change.
 `expert_review.py` then does `export_review_csv()` (one row per
 scenario × criterion, transcript inline, rating/comment blank),
 `import_review_csv()` (reads a filled sheet back in, `reviewer_role`
@@ -642,8 +640,8 @@ provenance/citation-surfacing change (chunk metadata → a new
 `BuiltPrompt` field → `api/chat.py` → the frontend), not a
 prompt-wording one, kept separate so this change stayed reviewable on
 its own. Done the next day — see the "CC attribution" section below.
-`ALLOWED_PROFILE_FIELDS` finalisation stays blocked on the Stage 1
-export schema, same as `profile_to_note`.
+`ALLOWED_PROFILE_FIELDS` finalisation and `profile_to_note` were both
+resolved later, 2026-08-16 — see "Stage 1 wiring" below.
 
 ## CC attribution
 
@@ -726,8 +724,9 @@ chunks (42 biology + 135 chemistry) carry `licence: CC-BY-4.0`
 uniformly. Full test suite re-run clean (193/193, grown since the 173
 figure above from the later usability pass — see that section).
 
-**Still open**: `ALLOWED_PROFILE_FIELDS` finalisation (blocked on the
-Stage 1 export schema) — unrelated to this.
+~~**Still open**: `ALLOWED_PROFILE_FIELDS` finalisation (blocked on the
+Stage 1 export schema)~~ **Resolved 2026-08-16** — see "Stage 1 wiring"
+below.
 
 ## Usability pass — click-to-run scripts, searchable student picker, mastery indicator
 
@@ -805,3 +804,86 @@ actually firing, see above), and a headless-browser screenshot of the
 picker filtering across the seeded demo students and the mastery bars
 showing a real mixed spread (strong/weak/no-data all visible at once on
 `demo-student-1`).
+
+## Stage 1 wiring (2026-08-16)
+
+The last remaining fail-closed stub, `profile_to_note`, is real now — the
+user supplied a synthetic fixture produced by their own Stage 1 pipeline
+(`data/stage1/stage1_profiles.synthetic.csv`; not real student data, not
+bound by a data-management agreement — confirmed by the user, hence
+committed rather than gitignored like the real-export path). Full spec
+of what was asked for is in
+[`stage3-stage1-schema-requirements.md`](docs/design/stage3-stage1-schema-requirements.md);
+this is the record of what was actually built against the real schema
+that landed.
+
+**Schema**: one row per (student_id, subject) — `flag_status`
+(`none`/`provisional`/`confirmed`) and `attainment_band`
+(`well_below`/`below`/`in_line`/`above`), both already coarse categories.
+Resolves the schema doc's open question directly: Stage 1 resolves
+magnitude internally before ever assigning a flag, so no raw residual
+reaches Stage 3 at all.
+
+**A real design correction found before building this, not after**:
+checked directly (not assumed) where `context_builder.py::build_context`
+is actually called from — only ever `chat_session.py::run_chat_turn`'s
+NORMAL-turn branch, which is only reachable once a topic's diagnostic
+has already completed and already written real mastery data. Gating
+`profile_to_note` there (the original plan) would have been dead code —
+by the time that path runs, it's structurally never cold start for that
+topic anymore. The genuinely cold-start moment is diagnostic START
+(`chat_session.py::start_diagnostic`), which took no `student_id`/
+`profiles` at all before this. Also checked: every LLM call here is
+built fresh per turn with no running memory between calls, so a note
+injected only at diagnostic-opening has zero automatic carry-over into
+normal tutoring afterward — confirmed with the user which of two designs
+they wanted (diagnostic-opening only vs. also re-injecting into the
+first few normal turns); decided on the narrower one, **plus** using the
+same data to pre-seed an initial mastery estimate, which the user
+proposed as a way to get a lasting-but-fading effect through the
+existing EWMA rule instead of through prompt text.
+
+**Mechanism — two Stage 1 fields, two genuinely separate purposes**:
+- `flag_status` → `profile_to_note` → a one-time TEACHING NOTE rendered
+  into the diagnostic's OPENING question prompt only (`tutor/
+  diagnostic.py::build_opening_prompt`, reusing `prompt_template.py`'s
+  existing `_guard`/`ALLOWED_PROFILE_FIELDS` guard directly rather than
+  duplicating it) — shapes tone for that one question, nothing else.
+  `none` or an unrecognised value both fail closed to no note.
+- `attainment_band` → `attainment_band_to_prior` → a numeric mastery
+  estimate (`well_below→0.15, below→0.3, in_line→0.55, above→0.8`,
+  chosen to land inside `summarise_state`'s existing 0.4/0.75 bucket
+  boundaries) written via new `student_state/store.py::
+  seed_mastery_prior` BEFORE the diagnostic's first answer — `n_obs=0`,
+  can never overwrite a real row (`ON CONFLICT ... DO NOTHING`). The
+  first real diagnostic answer blends into it via the existing EWMA
+  branch, not a fresh cold start — so the Stage 1 signal fades as real
+  evidence accumulates, exactly matching "only guides cold start, then
+  the app already guides itself" (the user's own framing, confirmed
+  correct once the diagnostic-vs-normal-turn distinction above was
+  found). Independent of `flag_status` — every student with attainment
+  data gets a prior, not just flagged ones.
+
+Both only ever fire from `api/chat.py::post_conversation`'s genuine
+first-creation path — deliberately NOT from `/reassess` ("Re-check my
+understanding"), since a re-check means the student already has
+tutoring history and this is no longer cold start in the intended sense.
+
+**Live-verified, 2026-08-16, with real LLM generation** (not a dry run —
+the user specifically asked for proof via real generation, not just unit
+tests): three synthetic ids, one per `flag_status`, all Biology so only
+the profile differed. `SYN0001` (`none`/`above`): prior seeded `0.8`, no
+TEACHING NOTE, real question generated normally. `SYN0008`
+(`provisional`/`in_line`): prior seeded `0.55`, TEACHING NOTE reached the
+LLM, real question generated normally. `SYN0010`
+(`confirmed`/`well_below`): prior correctly seeded `0.15` BEFORE the LLM
+call — then the call itself hit a genuine exhausted daily Gemini
+free-tier quota (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`,
+20/day), raising `LLMGenerationError` cleanly (see "Empty-answer failure
+path" above) rather than corrupting anything. That conversation is left
+in exactly the state `post_conversation`'s existing retry logic already
+handles (0 questions asked, still `pending`) — safe to retry once quota
+resets, no manual fix needed. 2 of 3 cases fully round-tripped with real
+generation; the 3rd demonstrated the fail-loud path working correctly
+under a real, external, already-documented constraint, not a bug. 215/215
+tests pass (22 new).

@@ -63,6 +63,25 @@ script's own docstring (`source="demo_seed"` in `student_state.db`, kept
 distinct from real `source="diagnostic"` rows). Safe to re-run (skips
 already-seeded topics); `--reset` wipes just the `demo-*` rows first.
 
+## Enable the Stage 1 signal (optional)
+
+```powershell
+cp data/stage1/stage1_profiles.synthetic.csv data/stage1/stage1_profiles.csv
+```
+
+Without this, `profile_to_note`/`attainment_band_to_prior` just have no
+profile to read (`get_profile` returns `None`, clean no-op — see
+`profiles/stage1_loader.py`) — the app runs fine, this step is purely to
+exercise the Stage 1 wiring locally. `stage1_profiles.synthetic.csv` is a
+committed fixture (confirmed safe — see README's "Stage 1 wiring"
+section); the copy target, `stage1_profiles.csv`, is where a real future
+export would land and is gitignored, same convention as `.env.example` →
+`.env`. Restart the backend after copying (profiles load once at
+startup). Try `SYN0001`/`SYN0008`/`SYN0010` in the student picker on a
+fresh **Biology** topic (e.g. Biochemistry) to see three different
+`flag_status`/`attainment_band` combinations — `none`/`above`,
+`provisional`/`in_line`, `confirmed`/`well_below` respectively.
+
 ## Start the service (every time)
 
 Two terminals, left running side by side:
@@ -91,7 +110,7 @@ Stop either with Ctrl+C.
 ```powershell
 python -m unittest discover tests
 ```
-Expect **193 passing tests** (and growing), instantly. This checks wiring,
+Expect **215 passing tests** (and growing), instantly. This checks wiring,
 the prompt/redaction guards, and conversation-store logic offline — it
 does **not** touch the live API, the embedding model, or the UI.
 

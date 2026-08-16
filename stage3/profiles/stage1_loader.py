@@ -3,28 +3,50 @@
 PROVENANCE — NEW. No helpdesk equivalent existed; the third context source
 in the Stage 3 design (alongside curriculum retrieval and knowledge state).
 
-The Stage 1 Colab pipeline will export a per-student summary (CSV) keyed by
-the pseudonymous StudentID: flag status, residual magnitude, and per-subject
-gap indicators. This module is the ONLY place that file is read, so the
-field mapping lives in exactly one spot when the real export lands.
+DONE (2026-08-16): real schema landed — a synthetic fixture produced by
+the user's own Stage 1 pipeline (not real student data, not bound by a
+data-management agreement — confirmed by the user), committed at
+``data/stage1/stage1_profiles.synthetic.csv`` (see the ``.gitignore``
+exception carved out for exactly this one file; the real runtime default
+path, ``stage1_profiles.csv``, stays gitignored as before — copy the
+fixture into place to exercise this locally without real data, same
+convention as ``.env.example`` -> ``.env``).
 
-PRIVACY NOTE (feeds the Chapter 3 data-protection section): the profile is
-a structured record that gets INJECTED into prompt construction, not
-embedded or retrieved. What granularity crosses to the cloud LLM is a
-deliberate decision — see the TODOs and tutor/prompt_template.py, which
-enforces the allowed fields.
+SCHEMA: one row per (student_id, subject) — NOT one row per student; a
+student can appear multiple times, once per subject Stage 1 has a record
+for. Two content fields, both already coarse categories, not raw scores
+(this was a real open design question — see docs/design/stage3-stage1-
+schema-requirements.md — resolved by the user: Stage 1 resolves magnitude
+internally before ever assigning a flag, so no raw residual reaches
+Stage 3 at all):
+
+    flag_status      "none" | "provisional" | "confirmed"
+    attainment_band  "well_below" | "below" | "in_line" | "above"
+
+The two fields serve genuinely different, deliberately separate purposes
+downstream — NOT redundant with each other:
+    - ``flag_status``     -> ``tutor/context_builder.py::profile_to_note``
+                              (a one-time pedagogical note, diagnostic-
+                              opening only — see that module).
+    - ``attainment_band``  -> ``tutor/context_builder.py::
+                              attainment_band_to_prior`` (a numeric
+                              mastery seed, blended away by real evidence
+                              via the existing EWMA rule — see
+                              student_state/store.py::seed_mastery_prior).
+
+PRIVACY NOTE (feeds the Chapter 3 data-protection section): the profile
+is a structured record that gets INJECTED into prompt construction (via
+the note) or a database write (via the prior), not embedded or retrieved.
+Only ``scaffolding_note`` — a short, coarse text string — is ever allowed
+to reach an LLM prompt at all (see ``tutor/prompt_template.py``'s
+``ALLOWED_PROFILE_FIELDS`` guard, enforced at runtime, not just by
+convention). ``attainment_band`` never reaches the LLM as text; it only
+ever becomes a single float written to the mastery table.
 
 TODO:
-    [ ] Fix the export schema once Stage 1 runs on the real LAET extract
-        (blocked on ethics approval); update FIELDS below to match.
-    [ ] Decide prompt granularity: a coarse category ("flagged for
-        additional scaffolding in <subject>") is defensible; the raw
-        residual value or any support-need field is not to be transmitted.
-        Record the decision and reasoning.
-    [ ] Validation: unknown StudentID → explicit None, never a fabricated
-        default profile.
-    [ ] Loading strategy: file is small — load once into a dict at startup
-        rather than re-reading per turn.
+    [ ] Real (non-synthetic) Stage 1 export, once it exists (blocked on
+        ethics approval) — this loader's parsing logic doesn't need to
+        change for that, only the file at the real default path does.
 """
 
 from __future__ import annotations
@@ -35,32 +57,38 @@ from typing import Any, Optional
 
 from ..config import CONFIG
 
-# Placeholder schema — MUST be updated to match the real Stage 1 export.
-FIELDS = ["student_id", "flagged", "flag_subjects"]
+FIELDS = ["student_id", "subject", "flag_status", "attainment_band"]
 
 
-def load_profiles(path: Path | None = None) -> dict[str, dict[str, Any]]:
-    """Load the Stage 1 export into {student_id: profile_row}.
+def load_profiles(path: Path | None = None) -> dict[str, dict[str, dict[str, Any]]]:
+    """Load the Stage 1 export into {student_id: {subject: profile_row}}.
 
-    Currently expects a CSV with the placeholder FIELDS above.
+    Nested by subject because the real export is one row per
+    (student_id, subject) — a student with records in two subjects
+    appears as two rows, not one row with a list field.
     """
     export = path or (CONFIG.paths.stage1_dir / "stage1_profiles.csv")
     if not export.exists():
         print(f"[stage1_loader] No export found at {export} — profiles empty.")
         return {}
 
-    profiles: dict[str, dict[str, Any]] = {}
+    profiles: dict[str, dict[str, dict[str, Any]]] = {}
     with open(export, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             sid = (row.get("student_id") or "").strip()
-            if sid:
-                profiles[sid] = dict(row)
-    print(f"[stage1_loader] Loaded {len(profiles)} profile(s).")
+            subject = (row.get("subject") or "").strip()
+            if sid and subject:
+                profiles.setdefault(sid, {})[subject] = dict(row)
+    n_rows = sum(len(subjects) for subjects in profiles.values())
+    print(f"[stage1_loader] Loaded {n_rows} profile row(s) for {len(profiles)} student(s).")
     return profiles
 
 
 def get_profile(
-    student_id: str, profiles: dict[str, dict[str, Any]]
+    student_id: str,
+    subject: str,
+    profiles: dict[str, dict[str, dict[str, Any]]],
 ) -> Optional[dict[str, Any]]:
-    """Explicit lookup — returns None for unknown students (see TODO)."""
-    return profiles.get(student_id)
+    """Explicit lookup — returns None for an unknown student OR a known
+    student with no record in this specific subject (see module TODO)."""
+    return profiles.get(student_id, {}).get(subject)

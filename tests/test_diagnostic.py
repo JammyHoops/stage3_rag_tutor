@@ -51,6 +51,41 @@ class TestBuildOpeningPrompt(unittest.TestCase):
         self.assertEqual(prompt.attributions[0]["title"], "Carbohydrates")
         self.assertEqual(prompt.attributions[0]["source_name"], "Isaac Science")
 
+    def test_no_profile_note_omits_teaching_note_line(self):
+        prompt = build_opening_prompt("biology", "Biochemistry", CHUNKS)
+        self.assertNotIn("TEACHING NOTE", prompt.user)
+
+    def test_empty_profile_note_omits_teaching_note_line(self):
+        prompt = build_opening_prompt("biology", "Biochemistry", CHUNKS, profile_note={})
+        self.assertNotIn("TEACHING NOTE", prompt.user)
+
+    def test_profile_note_with_scaffolding_note_renders_teaching_note_line(self):
+        prompt = build_opening_prompt(
+            "biology",
+            "Biochemistry",
+            CHUNKS,
+            profile_note={"scaffolding_note": "Keep the opening question gentle."},
+        )
+        self.assertIn("TEACHING NOTE: Keep the opening question gentle.", prompt.user)
+
+    def test_forbidden_key_in_profile_note_raises(self):
+        with self.assertRaises(ValueError):
+            build_opening_prompt(
+                "biology",
+                "Biochemistry",
+                CHUNKS,
+                profile_note={"support_need": "should never reach a prompt"},
+            )
+
+    def test_non_allowed_field_in_profile_note_raises(self):
+        with self.assertRaises(ValueError):
+            build_opening_prompt(
+                "biology",
+                "Biochemistry",
+                CHUNKS,
+                profile_note={"attainment_band": "above"},
+            )
+
 
 class TestBuildGradingPrompt(unittest.TestCase):
     def test_non_final_asks_for_next_question(self):

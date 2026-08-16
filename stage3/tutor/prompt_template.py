@@ -59,9 +59,15 @@ README's "CC attribution" section for the full story, including a real
 licence-correction bug (both connectors had the wrong licence hardcoded)
 found immediately before building this.
 
-TODO:
-    [ ] Finalise ALLOWED_PROFILE_FIELDS once the Stage 1 export schema and
-        the granularity decision are settled (see profiles/stage1_loader.py).
+DONE (2026-08-16): ALLOWED_PROFILE_FIELDS finalised — real schema landed
+(see profiles/stage1_loader.py), and the tuple itself needed no change:
+it was already correctly scoped to just `scaffolding_note`. This guard
+is no longer called from this module's own build_prompt with a non-empty
+note, though — see tutor/context_builder.py's module docstring for why
+the real Stage 1 signal moved to diagnostic.py::build_opening_prompt
+instead (reusing this module's `_guard`/ALLOWED_PROFILE_FIELDS directly).
+The guard mechanism here stays exactly as-is, just with a different
+caller now.
 """
 
 from __future__ import annotations
@@ -72,8 +78,11 @@ from typing import Any, Mapping, Sequence
 from ..student_state.explanation_method import EXPLANATION_METHODS, METHOD_LABELS
 from .attribution import build_attributions
 
-# Fields that must NEVER appear in prompt inputs. Extend as the Stage 1
-# schema firms up. Checked case-insensitively as substrings of keys.
+# Fields that must NEVER appear in prompt inputs. Checked
+# case-insensitively as substrings of keys. Real Stage 1 schema landed
+# 2026-08-16 (flag_status, attainment_band — see profiles/stage1_loader.py)
+# without needing to extend this list; "residual" already covered the
+# real risk, and the real fields never carry a raw value anyway.
 FORBIDDEN_KEY_FRAGMENTS = (
     "student_id",
     "name",
@@ -87,8 +96,9 @@ FORBIDDEN_KEY_FRAGMENTS = (
     "diagnosis",
 )
 
-# The only profile-derived content permitted into a prompt (placeholder —
-# see TODO). Coarse category text, not model internals.
+# The only profile-derived content permitted into a prompt — finalised
+# 2026-08-16 against the real Stage 1 schema (see module docstring "DONE"
+# note). Coarse category text, not model internals.
 ALLOWED_PROFILE_FIELDS = ("scaffolding_note",)
 
 # Conversation history: bounded turn window and the only allowed shape per

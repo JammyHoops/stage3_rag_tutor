@@ -46,6 +46,17 @@ again; nothing updates mastery silently outside a diagnostic round.
   and ``context_builder.summarise_state`` renders that as "no prior
   record", not a guessed default.
 
+DONE (2026-08-16): ``seed_mastery_prior`` — an optional, one-time
+EXCEPTION to the cold-start rule above, for a student with real Stage 1
+attainment data. Writes an initial `estimate` with `n_obs=0` (never a
+real observation) BEFORE the first diagnostic answer; the first real
+`record_observation` call blends into it via the normal EWMA branch. Can
+never overwrite an existing row (`ON CONFLICT ... DO NOTHING`). See
+`tutor/context_builder.py::attainment_band_to_prior` for the mapping and
+`tutor/chat_session.py::start_diagnostic` for the one call site (fires
+only on a genuinely first-ever diagnostic round, never a later
+"Re-check my understanding").
+
 SIBLING MODULE (2026-08-14): ``student_state/explanation_method.py``
 lives alongside this file and shares this same SQLite file
 (``CONFIG.paths.student_db``), but is kept in its OWN module rather than
@@ -178,6 +189,39 @@ def record_observation(
         )
 
     return new_estimate
+
+
+def seed_mastery_prior(
+    student_id: str,
+    subject: str,
+    topic: str,
+    estimate: float,
+    db_path: Path | None = None,
+) -> None:
+    """Write an initial mastery estimate BEFORE any real diagnostic
+    observation exists, derived from a Stage 1 attainment_band (see
+    profiles/stage1_loader.py::attainment_band_to_prior via
+    tutor/context_builder.py) — n_obs stays 0 so it's structurally
+    distinguishable from a real observation-derived row. Called once, at
+    diagnostic start, for a genuinely first-ever round only — see
+    tutor/chat_session.py::start_diagnostic.
+
+    NEVER overwrites: a no-op if a row already exists for this (student,
+    subject, topic) — this must not be able to clobber real progress.
+    The first real ``record_observation`` call after this finds the
+    seeded row already present and blends into it via the normal EWMA
+    branch (not the cold-start ``new_estimate = outcome`` branch), so
+    ``n_obs`` becomes 1 — correctly counting only real observations, the
+    seed itself is never counted as one.
+    """
+    ts = datetime.now(timezone.utc).isoformat()
+    with _connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO mastery (student_id, subject, topic, estimate, n_obs, updated_at) "
+            "VALUES (?, ?, ?, ?, 0, ?) "
+            "ON CONFLICT (student_id, subject, topic) DO NOTHING",
+            (student_id, subject, topic, estimate, ts),
+        )
 
 
 def get_knowledge_state(

@@ -53,6 +53,17 @@ DONE (2026-08-16): CC attribution wired through — ``prompt.attributions``
 ones (diagnostic questions are grounded in the same licensed content and
 carry the same obligation, previously overlooked). Stored once per
 message alongside ``chunk_doc_ids``, not re-derived on read.
+
+DONE (2026-08-16): real Stage 1 wiring, cold-start only —
+``start_diagnostic`` now optionally takes ``student_id``/``profiles`` and
+uses them ONCE, at the one genuinely cold-start moment (see
+``tutor/context_builder.py``'s module docstring for why that's here and
+not the normal-tutoring path): a one-time diagnostic-opening TEACHING
+NOTE (``profile_to_note``) and a one-time mastery prior written before
+the first real observation (``attainment_band_to_prior`` +
+``student_state/store.py::seed_mastery_prior``). ``run_chat_turn`` no
+longer takes a ``profiles`` parameter at all — its only use was passing
+through to ``build_context``, which no longer touches Stage 1 data.
 """
 
 from __future__ import annotations
@@ -68,6 +79,7 @@ from ..conversations.store import (
     touch_conversation,
 )
 from ..llm.client import LLMClient, get_client
+from ..profiles.stage1_loader import get_profile
 from ..redaction import redact
 from ..retriever.search import search_kb
 from ..student_state.explanation_method import (
@@ -77,9 +89,9 @@ from ..student_state.explanation_method import (
     record_understanding,
     select_method,
 )
-from ..student_state.store import record_observation
+from ..student_state.store import record_observation, seed_mastery_prior
 from ..taxonomy.topics import get_topic
-from .context_builder import build_context
+from .context_builder import attainment_band_to_prior, build_context, profile_to_note
 from .diagnostic import (
     QUESTION_COUNT,
     build_grading_prompt,
@@ -109,18 +121,41 @@ def _topic_label(subject: str, topic: str) -> str:
 
 
 def start_diagnostic(
-    conversation_id: int, subject: str, topic: str, llm: LLMClient | None = None
+    conversation_id: int,
+    subject: str,
+    topic: str,
+    student_id: str | None = None,
+    profiles: dict[str, dict[str, Any]] | None = None,
+    llm: LLMClient | None = None,
 ) -> None:
     """Generate and store the opening question of a diagnostic round.
 
     Called synchronously right after a conversation is created, or when a
     fresh round is explicitly requested (see api/chat.py's /reassess
     endpoint) — the tutor speaks first, with no preceding student message.
+
+    ``student_id``/``profiles`` are optional and should ONLY be passed for
+    a genuinely first-ever diagnostic round (api/chat.py's
+    ``post_conversation`` — never ``/reassess``, deliberately, since a
+    re-check means the student already has tutoring history and this is
+    no longer "cold start" — see tutor/context_builder.py's module
+    docstring). When given, this is the one place Stage 1 data is allowed
+    to touch anything: a one-time TEACHING NOTE in the opening prompt
+    (``profile_to_note``) and a one-time mastery prior written BEFORE the
+    first real observation (``attainment_band_to_prior`` +
+    ``seed_mastery_prior``). Omitted (the default) degrades cleanly to
+    the prior no-Stage-1 behaviour — no note, no seed.
     """
     llm = llm or get_client()
     topic_label = _topic_label(subject, topic)
     chunks = search_kb(topic_label, subject=subject, topic=topic, top_k=4)
-    prompt = build_opening_prompt(subject, topic_label, chunks)
+
+    profile = get_profile(student_id, subject, profiles) if student_id and profiles else None
+    prior = attainment_band_to_prior(profile)
+    if prior is not None:
+        seed_mastery_prior(student_id, subject, topic, prior)
+
+    prompt = build_opening_prompt(subject, topic_label, chunks, profile_note=profile_to_note(profile))
 
     answer = llm.generate(prompt.user, system=prompt.system)
     add_message(
@@ -213,7 +248,6 @@ def run_chat_turn(
     topic: str,
     conversation_id: int,
     student_message: str,
-    profiles: dict[str, dict[str, Any]],
     diagnostic_status: str = "done",
     diagnostic_questions_asked: int = 0,
     llm: LLMClient | None = None,
@@ -258,7 +292,6 @@ def run_chat_turn(
         student_id=student_id,
         subject=subject,
         query_text=safe_text,
-        profiles=profiles,
         topic=topic,
     )
 
