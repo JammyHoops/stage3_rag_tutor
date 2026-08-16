@@ -1,0 +1,13 @@
+{
+  "subject": "computer_science",
+  "topics": [
+    {"id": "programming", "label": "Programming"},
+    {"id": "computer_systems", "label": "Computer Systems"},
+    {"id": "algorithms_and_data_structures", "label": "Algorithms & Data Structures"},
+    {"id": "computer_networks", "label": "Computer Networks"},
+    {"id": "cyber_security", "label": "Cyber Security"},
+    {"id": "data_and_information", "label": "Data & Information"},
+    {"id": "impacts_and_ethics", "label": "Impacts & Ethics of Technology"},
+    {"id": "ai_and_machine_learning", "label": "AI & Machine Learning"}
+  ]
+}

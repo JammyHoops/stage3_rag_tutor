@@ -1,0 +1,24 @@
+# Retrieval spine (carried over from AI_IT_Helpdesk stack)
+langchain-core
+langchain-chroma
+langchain-huggingface
+chromadb
+sentence-transformers
+
+# API layer
+fastapi
+uvicorn
+pydantic
+python-dotenv
+
+# LLM provider (stage3/llm/client.py) — decided: Google AI Studio / Gemini
+google-genai
+
+# Redaction local NER fallback (stage3/redaction.py) — offline, no cloud
+# call. Model needs a separate one-time download, see module docstring:
+# python -m spacy download en_core_web_sm
+spacy
+
+# Curriculum connectors that hit a source's HTTP API (stage3/connectors/) —
+# explicit rather than relying on it being pulled in transitively.
+requests

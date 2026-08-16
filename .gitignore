@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# All .env variants (root and frontend/) except the committed example —
+# frontend/.env.development has no secret today, but the pattern should
+# be safe-by-default rather than relying on every future .env* file
+# staying accidentally harmless.
+.env*
+!.env.example
+
+# Node / frontend build output
+node_modules/
+dist/
+
+# IDEs / local tool state
+.vscode/
+.idea/
+.claude/
+
+# start.bat/stop.bat runtime state (PID files, server logs) — see scripts/
+.run/
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vector DB — never commit embeddings built from real data
+data/chroma/
+
+# ── ETHICS-CRITICAL ─────────────────────────────────────────────
+# No student data, curriculum extracts, Stage 1 exports or Stage 2
+# handwriting output may ever be committed to version control.
+# Directories are kept in the tree via .gitkeep only.
+data/curriculum/*
+!data/curriculum/.gitkeep
+data/stage1/*
+!data/stage1/.gitkeep
+data/stage2_inbox/*
+!data/stage2_inbox/.gitkeep
+data/stage2_archive/*
+!data/stage2_archive/.gitkeep
+data/redaction/*
+!data/redaction/.gitkeep
+!data/redaction/allowed_terms.txt
+student_state.db
+*.db

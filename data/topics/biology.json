@@ -1,0 +1,11 @@
+{
+  "subject": "biology",
+  "topics": [
+    {"id": "biochemistry", "label": "Biochemistry"},
+    {"id": "cell_biology", "label": "Cell Biology"},
+    {"id": "genetics", "label": "Genetics"},
+    {"id": "physiology", "label": "Physiology"},
+    {"id": "ecology", "label": "Ecology"},
+    {"id": "data_analysis", "label": "Data Analysis & Statistics"}
+  ]
+}

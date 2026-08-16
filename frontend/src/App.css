@@ -1,0 +1,28 @@
+.app-shell {
+  display: grid;
+  grid-template-columns: 200px 260px 1fr;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+}
+
+.app-shell__topbar {
+  grid-column: 1 / -1;
+}
+
+.app-shell__sidebar {
+  grid-column: 1;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  background: var(--bg-panel);
+}
+
+.app-shell__conversations {
+  grid-column: 2;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.app-shell__thread {
+  grid-column: 3;
+  min-width: 0;
+}

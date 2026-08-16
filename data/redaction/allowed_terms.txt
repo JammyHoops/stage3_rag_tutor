@@ -1,0 +1,28 @@
+# Terms that must NEVER be redacted, regardless of which layer matched
+# them (register or NER) — primarily scientist/mathematician eponyms that
+# collide with PERSON NER (e.g. "Newton's third law"). Committed, unlike
+# known_names.txt — this is curriculum vocabulary, not student data.
+# Extend as new false-positives turn up during real use / expert review.
+# One term per line, case-insensitive, # for comments.
+
+Newton
+Ohm
+Faraday
+Darwin
+Curie
+Pythagoras
+Watt
+Kelvin
+Celsius
+Fahrenheit
+Boyle
+Hooke
+Mendel
+Avogadro
+Joule
+Pascal
+Turing
+Boole
+Euclid
+Fibonacci
+Venn

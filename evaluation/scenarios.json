@@ -1,0 +1,64 @@
+{
+  "scenarios": [
+    {
+      "id": "bio_biochemistry_coldstart",
+      "subject": "biology",
+      "topic": "biochemistry",
+      "student_message": "Two glucose molecules join together to form a disaccharide. What type of reaction is this and what small molecule is released?",
+      "mastery_rows": [],
+      "scaffolding_note": null,
+      "notes": "Cold start (no mastery record), no scaffolding note. Baseline: grounded-answer quality with no adaptivity signal to respond to."
+    },
+    {
+      "id": "bio_genetics_established_scaffold",
+      "subject": "biology",
+      "topic": "genetics",
+      "student_message": "I'm looking at a phylogenetic tree and I'm not sure what the branching points actually represent. Can you explain?",
+      "mastery_rows": [
+        {"topic": "genetics", "estimate": 0.85, "n_obs": 5}
+      ],
+      "scaffolding_note": "Break new diagrams into smaller labelled steps before asking the student to interpret the whole diagram at once.",
+      "notes": "Established high mastery + a scaffolding note present. Tests whether the response reads as unnecessarily basic/condescending given the student is already secure on this topic, and whether the scaffolding note visibly changes HOW the explanation is structured."
+    },
+    {
+      "id": "chem_organic_coldstart",
+      "subject": "chemistry",
+      "topic": "organic_chemistry",
+      "student_message": "What's the difference between a skeletal structure and a full structural formula for an organic molecule?",
+      "mastery_rows": [],
+      "scaffolding_note": null,
+      "notes": "Cold start, no scaffolding note. Second baseline case, different subject."
+    },
+    {
+      "id": "chem_physical_developing_scaffold",
+      "subject": "chemistry",
+      "topic": "physical_chemistry",
+      "student_message": "I keep mixing up Brønsted-Lowry acids and bases with Lewis acids and bases. What's actually different between them?",
+      "mastery_rows": [
+        {"topic": "physical_chemistry", "estimate": 0.55, "n_obs": 3}
+      ],
+      "scaffolding_note": "Use a concrete real-world analogy before introducing the formal definition.",
+      "notes": "Mid-range ('developing understanding') mastery + a scaffolding note requesting analogy-first explanation. Tests whether the requested method (analogy) is actually visible in the response."
+    },
+    {
+      "id": "cs_algorithms_coldstart",
+      "subject": "computer_science",
+      "topic": "algorithms_and_data_structures",
+      "student_message": "Why does binary search need the list to be sorted first?",
+      "mastery_rows": [],
+      "scaffolding_note": null,
+      "notes": "Cold start, no scaffolding note. Third baseline case, different subject."
+    },
+    {
+      "id": "cs_cybersecurity_established_scaffold",
+      "subject": "computer_science",
+      "topic": "cyber_security",
+      "student_message": "How does a Caesar cipher actually encrypt a message, step by step?",
+      "mastery_rows": [
+        {"topic": "cyber_security", "estimate": 0.85, "n_obs": 4}
+      ],
+      "scaffolding_note": "Keep explanations short and check understanding after every 2-3 sentences rather than in one long block.",
+      "notes": "Established mastery + a chunking-style scaffolding note. Tests whether the response is actually broken into short, checked segments rather than one long block."
+    }
+  ]
+}

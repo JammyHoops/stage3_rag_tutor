@@ -1,0 +1,9 @@
+{
+  "subject": "chemistry",
+  "topics": [
+    {"id": "physical_chemistry", "label": "Physical Chemistry"},
+    {"id": "organic_chemistry", "label": "Organic Chemistry"},
+    {"id": "inorganic_chemistry", "label": "Inorganic Chemistry"},
+    {"id": "foundations", "label": "Foundations & Calculations"}
+  ]
+}

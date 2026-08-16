@@ -1,0 +1,92 @@
+.conversation-list {
+  padding: 12px 8px;
+  height: 100%;
+}
+
+.conversation-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 8px;
+  gap: 8px;
+}
+
+.conversation-list__heading {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: capitalize;
+  color: var(--text-h);
+}
+
+.conversation-list__hint {
+  margin: 0 8px 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.conversation-list__hint--info {
+  background: var(--info-bg);
+  border: 1px solid var(--info-border);
+  color: var(--text);
+}
+
+.conversation-list__empty {
+  padding: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.conversation-list__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.conversation-list__item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 13px;
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.conversation-list__item:hover {
+  background: var(--accent-bg);
+}
+
+.conversation-list__item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.conversation-list__item--active {
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.conversation-list__item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-list__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
