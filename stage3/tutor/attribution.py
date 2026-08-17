@@ -1,44 +1,26 @@
 """Human-readable Creative Commons attribution for curriculum content.
 
-PROVENANCE — NEW. Closes the "CC attribution" TODO that lived in
-``prompt_template.py``: Isaac Science and Ada Computer Science content
-both require real attribution + link-back wherever it surfaces in tutor
-output — a licensing obligation, not optional polish. Before this, the
-only "provenance" exposed anywhere was ``chunk_doc_ids`` (internal IDs
-like ``isaac_science:cb_carbohydrates__0#0``), which the frontend was
-rendering raw and unhelpfully.
+PROVENANCE — NEW. Isaac Science and Ada Computer Science content both
+require real attribution and link-back wherever it surfaces in tutor
+output — a licensing obligation. Before this, the only "provenance"
+exposed anywhere was raw internal ``chunk_doc_ids``.
 
 Shared by ``prompt_template.py`` (normal tutoring turns) and
-``diagnostic.py`` (diagnostic turns) — kept as its own module rather
-than duplicated in both, since they'd otherwise need the identical
-title-recovery/dedup logic twice.
+``diagnostic.py`` (diagnostic turns) so the title-recovery/dedup logic
+doesn't have to be duplicated.
 
-LICENCE VALUES — CONFIRMED 2026-08-16, not the original design doc's
-assumption. A plain fetch of either site only ever returns the JS SPA
-shell (no licence text) — confirmed directly, same failure mode the
-connectors already documented for content fetching. Settled via a
-headless-browser render of multiple real concept pages and each
-homepage: **Isaac Science is CC BY 4.0** (no NonCommercial or ShareAlike
-clause), **Ada Computer Science is CC BY-NC-SA 4.0** (does carry a
-NonCommercial clause) — the two are effectively swapped relative to the
-original design-doc guess (CC BY-NC-SA / CC BY-SA respectively). See
-``connectors/isaac_science.py`` and ``connectors/ada_computer_science.py``
-"CORRECTED" docstring notes.
-
-DELIBERATELY NOT reading the chunk's own ``licence`` metadata field —
-chunks ingested before the 2026-08-16 fix still carry the OLD (wrong)
-value in stored Chroma metadata until a re-ingest happens (not done as
-part of that fix — see those connectors' docstrings). ``SOURCE_
-ATTRIBUTION`` below is hardcoded and keyed by ``source`` instead, which
-IS reliable regardless of ingest staleness (set once at ingest, never
-touched by the licence bug).
+Licence values: Isaac Science is CC BY 4.0, Ada Computer Science is
+CC BY-NC-SA 4.0, confirmed via headless-browser render; see
+docs/design/FINDINGS_AND_DECISIONS.md §2. Attribution is keyed by the
+chunk's ``source`` field via a hardcoded lookup, rather than the chunk's
+own stored ``licence`` field, so it stays correct regardless of ingest
+timing.
 
 TITLE RECOVERY: chunk metadata has no dedicated "concept title" field,
 only ``section_title`` (e.g. "Carbohydrates" for a concept's intro
-section, "Carbohydrates — Monosaccharides" for a sub-section — see both
-connectors' ``sections.insert(0, {"title": title, ...})``). Splitting on
-" — " and taking the first part recovers the plain concept title without
-a new metadata field.
+section, "Carbohydrates - Monosaccharides" for a sub-section). Splitting
+on the separator and taking the first part recovers the plain concept
+title without a new metadata field.
 """
 
 from __future__ import annotations

@@ -1,15 +1,7 @@
 """Base connector interface for all knowledge sources.
 
-PROVENANCE — KEPT (near-verbatim) from AI_IT_Helpdesk
-``services/kb_agent/connectors/base.py``.
-
-WHY KEPT: the abstraction is source-agnostic. It normalises every source
-into the same document shape ({id, text, source, metadata}) before anything
-downstream sees it, which is what made the helpdesk able to mix Spiceworks
-tickets, vendor docs and transcripts in one index. Stage 3 reuses the same
-seam to mix awarding-body specifications, mark schemes and teacher
-materials. For Chapter 3: this is the component-reuse boundary — the
-interface pre-existed; the concrete curriculum connectors are new work.
+PROVENANCE — KEPT (near-verbatim) from AI_IT_Helpdesk. Normalises every
+source into the same document shape before anything downstream sees it.
 """
 
 from __future__ import annotations

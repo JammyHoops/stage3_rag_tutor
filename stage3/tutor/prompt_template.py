@@ -1,73 +1,35 @@
 """Explicit, auditable prompt construction — the privacy boundary in code.
 
-PROVENANCE — NEW, and a deliberate CORRECTION of the helpdesk pattern.
-The helpdesk orchestrator f-stringed its entire raw context dict into the
-prompt (``Raw context: {context}``). Harmless for an IT ticket; for
-Stage 3 that dict would carry the student identifier, Stage 1 residuals
-and potentially support-need indicators straight to a cloud LLM —
-contradicting the data-protection architecture argued in Chapter 2
-(Stage 2 exists as a local privacy boundary so that only redacted
-extracted text crosses to the cloud).
+PROVENANCE — NEW, and a deliberate correction of the helpdesk pattern,
+which f-stringed its entire raw context dict into the prompt. See
+docs/design/FINDINGS_AND_DECISIONS.md §7 for why that was a real privacy
+risk for Stage 3 specifically.
 
 DESIGN RULE: every field that reaches the prompt is named in the function
 signature below. Nothing is interpolated wholesale. ``_guard`` rejects any
-value containing a forbidden key, so a future refactor cannot quietly
+value containing a forbidden key, so a future refactor can't quietly
 reintroduce the helpdesk pattern.
 
-DONE (2026-08-14): explanation-method selection wired in — two new
-optional, named, guarded fields, ``explanation_method`` and
-``pending_understanding_check`` (see
-``student_state/explanation_method.py`` and
-``docs/design/stage3-explanation-method-design.md``). The latter asks
-the LLM to end its reply with a trailing ``[[UNDERSTANDING: yes|no]]``
-marker — same one-call, marker-then-strip pattern already used by
-``tutor/diagnostic.py``'s ``[[MASTERY_SCORE: x]]``, chosen specifically
-to avoid a second LLM call on every ordinary tutoring turn. Parsing that
-marker back out is ``student_state.explanation_method.
-parse_understanding_marker`` — a response-parsing concern kept with the
-module that owns the outcome vocabulary, not here.
+``explanation_method`` and ``pending_understanding_check`` wire in
+Thompson-sampled explanation-method selection (see
+``student_state/explanation_method.py``); the latter asks the LLM to end
+its reply with a trailing ``[[UNDERSTANDING: yes|no]]`` marker, parsed by
+``student_state.explanation_method.parse_understanding_marker``.
 
-DONE (2026-08-15): the pedagogy instruction set, response-format
-guidance, and a token/character budget for retrieved chunks are all
-real now — see ``SYSTEM_PROMPT`` and ``MAX_CHUNK_CHARS`` below.
-Grounded in VanLehn (2011), already cited in Chapter 2 as the
-effectiveness benchmark: step-based tutoring (feedback/hints at each
-step of a multi-step problem) outperforms answer-only tutoring, and
-hint-before-answer outperforms stating the answer outright. Both are now
-explicit instructions, not incidental LLM style — this matters for the
-expert-review rubric (the SENCO reviewer needs a stated expectation to
-score `clarity`/`curriculum_fit` against, not an arbitrary one). The
-SYSTEM_PROMPT default (guide-before-tell) is worded to defer to a
-per-turn ``explanation_method`` instruction when one is given — e.g.
-``worked_example`` deliberately does the opposite (answer shown first)
-and should win when Thompson sampling picked it. The
-"never signal a level drop when foundation content is blended" rule
-(see docs/design/stage3-curriculum-retrieval-design.md) is now baked
-into SYSTEM_PROMPT too, even though the deliberate auto-trigger isn't
-built yet — live evaluation on 2026-08-15 showed foundation chunks CAN
-already surface via ordinary retrieval with no explicit filter (see
-README's "Evaluation instrument" section), so this already matters
-today, not just once the trigger exists.
+The pedagogy instruction set (``SYSTEM_PROMPT``) and the chunk character
+budget (``MAX_CHUNK_CHARS``) are grounded in VanLehn (2011) and calibrated
+against real ingested chunk lengths — see FINDINGS_AND_DECISIONS.md §7.
 
-DONE (2026-08-16): CC attribution — see ``BuiltPrompt.attributions``,
-populated by ``tutor/attribution.py::build_attributions``. Real
-human-readable citations (title, source, licence, both linked) now flow
-``build_prompt`` -> ``chat_session.py`` -> stored per-message in
-``conversations.db`` -> ``api/chat.py`` -> the frontend's `MessageBubble`
-— replacing what used to be a raw dump of internal `chunk_doc_ids`. See
-README's "CC attribution" section for the full story, including a real
-licence-correction bug (both connectors had the wrong licence hardcoded)
-found immediately before building this.
+``BuiltPrompt.attributions`` (populated by
+``tutor/attribution.py::build_attributions``) carries human-readable CC
+citations through to the frontend, replacing a raw dump of internal
+``chunk_doc_ids``.
 
-DONE (2026-08-16): ALLOWED_PROFILE_FIELDS finalised — real schema landed
-(see profiles/stage1_loader.py), and the tuple itself needed no change:
-it was already correctly scoped to just `scaffolding_note`. This guard
-is no longer called from this module's own build_prompt with a non-empty
-note, though — see tutor/context_builder.py's module docstring for why
-the real Stage 1 signal moved to diagnostic.py::build_opening_prompt
-instead (reusing this module's `_guard`/ALLOWED_PROFILE_FIELDS directly).
-The guard mechanism here stays exactly as-is, just with a different
-caller now.
+``ALLOWED_PROFILE_FIELDS`` is enforced here but no longer called from this
+module's own ``build_prompt`` with a non-empty note — see
+``tutor/context_builder.py``'s docstring for why the real Stage 1 signal
+moved to ``diagnostic.py::build_opening_prompt`` instead (reusing this
+module's ``_guard``/``ALLOWED_PROFILE_FIELDS`` directly).
 """
 
 from __future__ import annotations
@@ -78,27 +40,23 @@ from typing import Any, Mapping, Sequence
 from ..student_state.explanation_method import EXPLANATION_METHODS, METHOD_LABELS
 from .attribution import build_attributions
 
-# Fields that must NEVER appear in prompt inputs. Checked
-# case-insensitively as substrings of keys. Real Stage 1 schema landed
-# 2026-08-16 (flag_status, attainment_band — see profiles/stage1_loader.py)
-# without needing to extend this list; "residual" already covered the
-# real risk, and the real fields never carry a raw value anyway.
+# Fields that must never appear in prompt inputs. Checked
+# case-insensitively as substrings of keys.
 FORBIDDEN_KEY_FRAGMENTS = (
     "student_id",
     "name",
     "dob",
     "date_of_birth",
     "upn",
-    "residual",        # raw Stage 1 model output — category only, if anything
+    "residual",        # raw Stage 1 model output
     "sen",             # any support-need field
     "support_need",
     "ehcp",
     "diagnosis",
 )
 
-# The only profile-derived content permitted into a prompt — finalised
-# 2026-08-16 against the real Stage 1 schema (see module docstring "DONE"
-# note). Coarse category text, not model internals.
+# The only profile-derived content permitted into a prompt. Coarse
+# category text, not model internals.
 ALLOWED_PROFILE_FIELDS = ("scaffolding_note",)
 
 # Conversation history: bounded turn window and the only allowed shape per
@@ -106,16 +64,11 @@ ALLOWED_PROFILE_FIELDS = ("scaffolding_note",)
 MAX_HISTORY_TURNS = 6
 ALLOWED_HISTORY_FIELDS = ("role", "text")
 
-# See DONE note above — explanation-method selection.
 ALLOWED_UNDERSTANDING_CHECK_FIELDS = ("concept_label",)
 
-# Per-chunk character cap for CONTEXT — see DONE note above. Calibrated
-# against real ingested chunk lengths (Isaac Science / Ada CS sections),
-# checked directly rather than guessed: observed range 222-6413 chars,
-# median ~1163. 2000 keeps the large majority of real sections intact
-# while reining in the small number of outliers (several observed over
-# 3000, one at 6413) that would otherwise let one chunk crowd out the
-# other top_k results in the prompt.
+# Per-chunk character cap for CONTEXT. Calibrated against real ingested
+# chunk lengths (observed range 222-6413 chars, median ~1163) so one long
+# outlier chunk can't crowd out the rest of the top_k results.
 MAX_CHUNK_CHARS = 2000
 
 SYSTEM_PROMPT = (

@@ -1,46 +1,11 @@
 """Chroma vector store for the curriculum knowledge base.
 
-PROVENANCE — KEPT (lightly adapted) from AI_IT_Helpdesk
-``services/kb_agent/vectordb/store.py``. This was the live storage path in
-the helpdesk; the parallel dead branch (placeholder embedder + FAISS index
-builder) has been deleted rather than carried over.
-
-WHY KEPT, component by component:
-- ``_stable_doc_id``      : composes "source:id" so re-ingestion UPDATES
-                            existing entries instead of duplicating them —
-                            makes ingest idempotent.
-- ``_normalize_metadata`` : Chroma only accepts str/int/float/bool/None
-                            metadata values; this coerces everything else
-                            safely. Written after being bitten in the
-                            helpdesk project; keep it.
-- feedback counters       : ``update_feedback`` mutates per-document
-                            counters in metadata, which the retriever's
-                            ranking layer reads back. This closes the
-                            retrieval-quality feedback loop.
-- local embeddings        : sentence-transformers runs on-device, so
-                            embedding curriculum text does not transmit
-                            anything to a cloud service — consistent with
-                            the data-protection architecture argued in
-                            Chapter 2.
-
-ADAPTATIONS for Stage 3:
-- Collection renamed to "stage3_curriculum".
-- Persist directory now comes from central config, not a hard-coded
-  relative path (the helpdesk version broke if run from the wrong cwd).
-
-TODO:
-    [ ] Define what "positive"/"negative" feedback MEANS in a tutoring
-        context before wiring the endpoint to anything. Candidate: expert
-        reviewer marks a retrieved chunk as relevant/irrelevant to the
-        scenario during structured evaluation. (In the helpdesk it meant
-        "this article resolved the ticket".)
-    [ ] Curriculum-retrieval tiering (see
-        docs/design/stage3-curriculum-retrieval-design.md): the new
-        difficulty field MUST be named `difficulty_tier`, not `tier` — it
-        would otherwise collide with the trust-axis `provenance_tier`
-        already used by ingest.py. `_normalize_metadata` already coerces
-        list values (e.g. a `prerequisites` list) to comma-joined strings;
-        readers must split them back explicitly.
+PROVENANCE — KEPT (lightly adapted) from AI_IT_Helpdesk. ``_stable_doc_id``
+and ``_normalize_metadata`` carried over as-is; collection renamed to
+"stage3_curriculum" and the persist directory now comes from central
+config rather than a hard-coded relative path. See
+docs/design/FINDINGS_AND_DECISIONS.md §1 for the reasoning behind what was
+kept, and docs/TODO.md for the open feedback-semantics question.
 """
 
 from __future__ import annotations
@@ -148,7 +113,7 @@ def search(query: str, k: int = 5, filters: Optional[Dict[str, Any]] = None):
 
 
 # ---------------------------------------------------------------------------
-# Feedback counters  (KEPT — semantics TODO in module docstring)
+# Feedback counters (KEPT) — see docs/TODO.md for the open semantics question
 # ---------------------------------------------------------------------------
 
 def _now_iso() -> str:

@@ -1,14 +1,9 @@
 """Central configuration for Stage 3.
 
-PROVENANCE — ADAPTED from AI_IT_Helpdesk ``services/kb_agent/config.py``.
-The original raised ``ValueError: mutable default ... use default_factory``
-on import under Python 3.11+ because dataclass fields used nested dataclass
-instances as defaults. Fixed here with ``field(default_factory=...)``.
-The unused FAISS index settings from the original have been removed —
-Chroma is the single vector store (see vectordb/store.py).
-
-All values can be overridden from the environment (.env) so nothing
-sensitive is hard-coded.
+PROVENANCE — ADAPTED from AI_IT_Helpdesk's config module. All values can
+be overridden from the environment (.env) so nothing sensitive is
+hard-coded. See docs/design/FINDINGS_AND_DECISIONS.md for the reasoning
+behind individual defaults (temperature, embedding model, etc).
 """
 
 from __future__ import annotations
@@ -42,9 +37,7 @@ class Paths:
 
 @dataclass
 class EmbeddingConfig:
-    # Same model the helpdesk used in the LIVE code path (vectordb/store.py),
-    # not the dead placeholder branch. Local model — no data leaves the machine
-    # at embedding time, which matters for the privacy-boundary argument.
+    # Local model: no data leaves the machine at embedding time.
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
 
 
@@ -53,13 +46,8 @@ class LLMConfig:
     provider: str = os.getenv("LLM_PROVIDER", "null")
     model: str = os.getenv("LLM_MODEL", "")
     api_key: str = os.getenv("LLM_API_KEY", "")
-    # 0.2, not the helpdesk's 0.3 — see llm/client.py's module docstring
-    # for the justification (tutoring answers should stay closer to
-    # retrieved curriculum grounding and be more reproducible turn-to-turn
-    # than open IT-support chat; decided 2026-08-16).
     temperature: float = 0.2
     max_output_tokens: int = 1024
-    # Retry behaviour carried over from the helpdesk Gemini wrapper.
     max_retries: int = 3
     retry_backoff_seconds: float = 2.0
 

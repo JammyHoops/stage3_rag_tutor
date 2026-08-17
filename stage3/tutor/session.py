@@ -1,36 +1,18 @@
-"""Tutoring turn handler — replaces both Rasa and the helpdesk orchestrator.
+"""Tutoring turn handler for the Stage 2 file-handoff path.
 
-PROVENANCE — NEW; two helpdesk components were deliberately NOT carried
-over, and the reasons belong in Chapter 3:
+PROVENANCE — NEW; replaces both Rasa and the helpdesk orchestrator. Rasa
+(intent classification + story-based dialogue) is the wrong shape for
+open tutoring dialogue, where a turn isn't one of a small set of intents;
+the orchestrator's raw-context prompt assembly is replaced by the guarded
+template in prompt_template.py. What's retained: the answer travels with
+the doc IDs that produced it, so provenance can be shown to a reviewer.
 
-- Rasa (intent classification + story-based dialogue): the wrong shape
-  for open tutoring dialogue, where a turn is not one of a small set of
-  intents; also a heavy, version-brittle dependency. Its useful ideas —
-  per-turn provenance (articles_used) and a feedback commit step — are
-  retained here without the framework.
-- The orchestrator's raw-context prompt assembly: replaced by the guarded
-  template in prompt_template.py (see its docstring for why).
-
-What IS retained from the helpdesk design: the answer travels with the
-doc IDs that produced it, so provenance can be shown to the reviewer and
-feedback can be committed against exactly those chunks.
-
-TODO:
-    [ ] Multi-turn dialogue: carry conversation history into subsequent
-        prompts (bounded — decide a turn window / token cap).
-    [ ] Confidence gate: consult Submission.mean_char_confidence before
-        tutoring on Stage 2 text (threshold TODO in stage2_bridge).
-    [ ] Outcome inference: how a turn produces an observation for
-        student_state.record_observation (links to the outcome-scale TODO).
-    [ ] Transcript logging for expert review: persist {inputs (redacted),
-        prompt, response, chunk_doc_ids, timestamps} — evaluation/ reads
-        these. Store under UEL OneDrive per the RDM requirements.
-    [ ] Failure paths: empty retrieval still needs explicit student-safe
-        handling. Empty LLM response is resolved generically — see
-        llm/client.py's LLMGenerationError; ``generate`` now raises
-        instead of returning "", so a failure here just propagates (this
-        path isn't wired to a live endpoint yet — see api/main.py TODO —
-        so there's no caller here to add a try/except to yet).
+Dormant: this is the older, file-handoff-shaped turn handler (takes a
+``Submission`` from the Stage 2 MATLAB bridge), parallel to
+``tutor/chat_session.py`` (what the live chat UI actually uses). No
+conversation-thread concept, no mastery/explanation-method wiring, no
+Stage 1 cold-start parity with ``chat_session.py::start_diagnostic``. Not
+exercised by any test or live endpoint today — see docs/TODO.md.
 """
 
 from __future__ import annotations
@@ -51,16 +33,11 @@ class TutorResponse:
     subject: str
 
 
-def run_turn(
-    submission: Submission,
-    profiles: dict[str, dict[str, Any]],
-    llm: LLMClient | None = None,
-) -> TutorResponse:
-    """One tutoring turn: Stage 2 submission in → grounded response out.
+def run_turn(submission: Submission, llm: LLMClient | None = None) -> TutorResponse:
+    """One tutoring turn: Stage 2 submission in -> grounded response out.
 
-    Pipeline: redact → build three-source context → guarded prompt → LLM.
-    ``redact`` is fail-closed (NotImplementedError) until implemented, so
-    this path cannot transmit unredacted student text even by accident.
+    Pipeline: redact -> build curriculum + knowledge-state context ->
+    guarded prompt -> LLM.
     """
     llm = llm or get_client()
 
@@ -70,7 +47,6 @@ def run_turn(
         student_id=submission.student_id,
         subject=submission.subject,
         query_text=safe_text,
-        profiles=profiles,
     )
 
     prompt = build_prompt(
@@ -78,13 +54,9 @@ def run_turn(
         redacted_student_text=safe_text,
         curriculum_chunks=bundle.curriculum_chunks,
         knowledge_state_summary=bundle.knowledge_state_summary,
-        profile_note=bundle.profile_note,
     )
 
     answer = llm.generate(prompt.user, system=prompt.system)
-    # Empty-answer path resolved generically (see docstring) — a hard
-    # failure now raises past this point rather than returning "".
-    # TODO: transcript logging (see docstring).
 
     return TutorResponse(
         answer=answer,

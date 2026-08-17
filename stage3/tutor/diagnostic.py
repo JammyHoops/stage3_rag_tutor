@@ -1,57 +1,41 @@
 """LLM-graded diagnostic Q&A — the mastery-baseline mechanism.
 
-PROVENANCE — NEW. Implements the mechanism confirmed with the user
-(2026-08-13, see plan) for `student_state/store.py::record_observation`:
-each topic thread opens with a short Q&A that seeds a real mastery
-estimate, rather than starting cold. Kept as its own module rather than
-folded into `prompt_template.py`, because it has a genuinely different
-prompt contract — the LLM must emit a machine-parseable score marker
-alongside its visible reply, which `prompt_template.py`'s guarded
-normal-tutoring path has no notion of.
+PROVENANCE — NEW. Implements the mechanism behind
+``student_state/store.py::record_observation``: each topic thread opens
+with a short Q&A that seeds a real mastery estimate, rather than starting
+cold. Kept as its own module rather than folded into
+``prompt_template.py`` because it has a genuinely different prompt
+contract: the LLM must emit a machine-parseable score marker alongside its
+visible reply.
 
-WHY LLM-GRADED, NOT REAL QUESTION CONTENT: checked directly against Isaac
-Science's actual question pages (e.g. `monosaccharides_r1`) before
-building this — their real questions use bespoke interactive widgets
-(symbolic-chemistry equation builder, drag-to-reorder, cloze fill-in) with
-no answer key in the public API response (graded server-side). Building
-matching UI widgets was out of scope, so questions are LLM-generated and
-LLM-graded instead, using the same chat interface as normal tutoring.
+Questions are LLM-generated and LLM-graded, not drawn from real curriculum
+question banks — see docs/design/FINDINGS_AND_DECISIONS.md §5 for why
+(bespoke interactive widgets with no answer key in the public API).
 
-MECHANISM: `chat_session.py` calls `build_opening_prompt` once when a
-diagnostic round starts (new topic, or an explicit "Re-check my
-understanding"). For each of the next QUESTION_COUNT student answers, it
-calls `build_grading_prompt`, which asks the LLM to grade the just-given
-answer AND (unless this is the final question) ask the next one, in a
-single call. The LLM's raw response ends with a machine-parseable score
-marker on its own line, e.g.:
+MECHANISM: ``chat_session.py`` calls ``build_opening_prompt`` once when a
+diagnostic round starts. For each of the next ``QUESTION_COUNT`` student
+answers, it calls ``build_grading_prompt``, which asks the LLM to grade
+the just-given answer and (unless this is the final question) ask the
+next one, in a single call. The response ends with a machine-parseable
+score marker on its own line, e.g.:
 
-    Good — that's broadly right. Now, can you tell me...
+    Good, that's broadly right. Now, can you tell me...
     [[MASTERY_SCORE: 0.5]]
 
-`parse_graded_response` strips that marker before anything is shown to
+``parse_graded_response`` strips that marker before anything is shown to
 the student and extracts the score. If the marker is missing or
-malformed, the response is still shown (so the turn doesn't just fail
-silently) but no score is returned — the caller must NOT guess a value
-and must skip calling `record_observation` for that turn. Not a fail-
-crash, but not a fail-silent-wrong-data either.
+malformed, the response is still shown but no score is returned — the
+caller must not guess a value and must skip ``record_observation`` for
+that turn.
 
-DONE (2026-08-16): ``build_opening_prompt`` now accepts an optional
-``profile_note`` — the one genuinely cold-start moment for Stage 1 data
-(see ``tutor/context_builder.py``'s "DONE" note and ``chat_session.py::
-start_diagnostic`` for why it lives here and not in the normal-tutoring
-path). Reuses ``prompt_template.py``'s ``_guard``/``ALLOWED_PROFILE_FIELDS``
-directly rather than duplicating the forbidden-field check. Not threaded
-into ``build_grading_prompt`` — the note is about framing the OPENING
-question's tone, not re-injected into every grading turn of the same
-round.
+``build_opening_prompt`` accepts an optional ``profile_note`` — the one
+genuinely cold-start moment for Stage 1 data, reusing
+``prompt_template.py``'s ``_guard``/``ALLOWED_PROFILE_FIELDS`` directly.
+See ``tutor/context_builder.py``'s docstring for why it lives here and
+not the normal-tutoring path. Not threaded into ``build_grading_prompt``
+— the note frames the opening question's tone only.
 
-TODO:
-    [ ] Diagnostic questions currently aren't guaranteed non-repeating
-        beyond "the LLM can see the prior questions in this prompt" — no
-        hard dedup. Acceptable for QUESTION_COUNT=3; revisit if that
-        constant grows.
-    [ ] No token/length cap on curriculum extracts fed into these
-        prompts — same open TODO as prompt_template.py.
+See docs/TODO.md for open items (non-repeat guarantee, extract length cap).
 """
 
 from __future__ import annotations

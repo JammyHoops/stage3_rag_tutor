@@ -1,85 +1,39 @@
 """Per-student knowledge state — durable, structured, NOT a vector store.
 
-PROVENANCE — NEW. This is the largest gap identified when auditing the
-helpdesk repo: its only "state" was Rasa session slots (retry_count,
-articles_used), which evaporate when the session ends. Stage 3 requires a
-knowledge state that accumulates ACROSS sessions and can be joined to the
-Stage 1 learner profile. Nothing transferred; built from scratch.
+PROVENANCE — NEW. No helpdesk equivalent; its only "state" was Rasa
+session slots that evaporated when a session ended. Stage 3 needs
+knowledge state that persists across sessions.
 
-DESIGN DECISIONS (document in Chapter 3):
-- SQLite via the standard library: zero extra dependencies, a single local
-  file, trivially inspectable. The knowledge state never needs semantic
-  search, so a vector store would be the wrong tool.
-- Students are identified ONLY by the pseudonymous StudentID issued in the
-  LAET extract (Stage 1). No names, no UPNs — consistent with the data
-  specification agreed with the school.
+Plain SQLite, not a vector store — knowledge state never needs semantic
+search. Students are identified only by the pseudonymous StudentID from
+the LAET extract, no names or UPNs.
 
-SCHEMA (implemented below):
+SCHEMA:
     observations : one row per assessed interaction
                    (student, subject, topic, outcome, timestamp, source)
     mastery      : one row per (student, subject, topic) — the current
                    estimate the tutor reads at prompt-build time
 
-DECISION (2026-08-13, confirmed with the user): mastery is seeded and
-updated by an **LLM-graded diagnostic Q&A** at the start of each topic
-(see ``tutor/diagnostic.py`` and ``tutor/chat_session.py::
-start_diagnostic`` / ``_run_diagnostic_answer_turn``) — not continuous
+Mastery is seeded and updated by an LLM-graded diagnostic Q&A at the start
+of each topic (``tutor/diagnostic.py``, ``tutor/chat_session.py::
+start_diagnostic`` / ``_run_diagnostic_answer_turn``), not continuous
 grading of ordinary tutoring turns. The student can explicitly trigger a
-fresh diagnostic round later ("Re-check my understanding") to update it
-again; nothing updates mastery silently outside a diagnostic round.
+fresh round later ("Re-check my understanding"). Outcome scale is graded
+(0.0/0.5/1.0), not binary. Update rule is EWMA (``ALPHA=0.35``); see
+docs/design/FINDINGS_AND_DECISIONS.md §5 for why this over a rolling
+window or Bayesian Knowledge Tracing. An unseen (student, subject, topic)
+has no ``mastery`` row at all — cold start is an explicit empty state, not
+a guessed default.
 
-- **Outcome scale**: graded, not binary — ``0.0`` (incorrect) / ``0.5``
-  (partial) / ``1.0`` (correct), matching what an LLM grading a short
-  free-text answer can actually distinguish. ``source="diagnostic"`` for
-  every observation this mechanism records (the ``source`` field already
-  existed for this purpose, just unused until now).
-- **Update rule**: EWMA — ``new = ALPHA * outcome + (1 - ALPHA) * old``,
-  or ``new = outcome`` with no prior row (true cold start). ``ALPHA =
-  0.35`` — recent evidence weighted more than history, but one data point
-  can't swing the estimate wildly. Chosen over a rolling-window proportion
-  (would need to cap/query the observations table on every read) or
-  Bayesian Knowledge Tracing (genuinely over-scope for the timeline —
-  needs a guess/slip/transition parameter fit this project has no data to
-  calibrate).
-- **Cold start**: an unseen (student, subject, topic) has no `mastery`
-  row at all — ``get_knowledge_state`` already returns ``[]`` for this,
-  and ``context_builder.summarise_state`` renders that as "no prior
-  record", not a guessed default.
+``seed_mastery_prior`` is a one-time exception to that cold-start rule,
+for a student with Stage 1 attainment data — see its own docstring and
+FINDINGS_AND_DECISIONS.md §5.
 
-DONE (2026-08-16): ``seed_mastery_prior`` — an optional, one-time
-EXCEPTION to the cold-start rule above, for a student with real Stage 1
-attainment data. Writes an initial `estimate` with `n_obs=0` (never a
-real observation) BEFORE the first diagnostic answer; the first real
-`record_observation` call blends into it via the normal EWMA branch. Can
-never overwrite an existing row (`ON CONFLICT ... DO NOTHING`). See
-`tutor/context_builder.py::attainment_band_to_prior` for the mapping and
-`tutor/chat_session.py::start_diagnostic` for the one call site (fires
-only on a genuinely first-ever diagnostic round, never a later
-"Re-check my understanding").
-
-SIBLING MODULE (2026-08-14): ``student_state/explanation_method.py``
-lives alongside this file and shares this same SQLite file
-(``CONFIG.paths.student_db``), but is kept in its OWN module rather than
-appended here — this docstring's SCHEMA section above is deliberately
-mastery-only (``observations``/``mastery``, referenced as such from
-``conversations/store.py``'s own docstring), and explanation-method
-selection is a genuinely different schema/concern (Thompson sampling
-over which teaching method works per student) that happens to be, per
-``docs/design/stage3-explanation-method-design.md``, "an extension of
-the per-student knowledge-state source" rather than a new context
-source — hence same DB file, separate module and schema block.
-
-TODO (still open, deliberately not decided here):
-    [ ] Decide whether mastery decays with inactivity — separate design
-        question from the update rule itself, not raised as part of this
-        change.
-    [ ] Foundation-tier trigger (in-session half): still needs a
-        cross-concept ``prerequisites`` graph, which no ingested source
-        provides yet — see connectors/ada_computer_science.py and
-        connectors/isaac_science.py's module docstrings. Not blocked by
-        this change; `record_observation` now genuinely works, but
-        nothing reads mastery for a *foundation-tier* trigger decision
-        yet.
+``student_state/explanation_method.py`` is a sibling module sharing this
+same SQLite file but kept separate: a genuinely different schema/concern
+(Thompson sampling over which teaching method works per student). See
+docs/TODO.md for the open mastery-decay and foundation-tier-trigger
+questions.
 """
 
 from __future__ import annotations
@@ -91,10 +45,9 @@ from typing import Any
 
 from ..config import CONFIG
 
-# EWMA smoothing factor for the mastery update rule — see module
-# docstring "DECISION" for the reasoning. Recent evidence weighted more
-# than history, but bounded so one data point can't swing the estimate
-# wildly.
+# EWMA smoothing factor for the mastery update rule. Recent evidence
+# weighted more than history, but bounded so one data point can't swing
+# the estimate wildly.
 MASTERY_EWMA_ALPHA = 0.35
 
 _SCHEMA = """
@@ -103,13 +56,11 @@ CREATE TABLE IF NOT EXISTS observations (
     student_id TEXT NOT NULL,
     subject    TEXT NOT NULL,
     topic      TEXT NOT NULL,
-    outcome    REAL NOT NULL,          -- see TODO: scale
+    outcome    REAL NOT NULL,          -- 0.0 | 0.5 | 1.0
     source     TEXT NOT NULL,          -- 'diagnostic' (real) |
                                         -- 'demo_seed' (fabricated, see
-                                        -- scripts/seed_demo_students.py —
-                                        -- UI walkthrough only, never real
-                                        -- data) | 'stage2_handwriting' |
-                                        -- 'typed' | ...
+                                        -- scripts/seed_demo_students.py) |
+                                        -- 'stage2_handwriting' | 'typed'
     created_at TEXT NOT NULL
 );
 
@@ -149,8 +100,7 @@ def record_observation(
 ) -> float:
     """Store one observation and update the mastery estimate via EWMA.
 
-    ``outcome`` must be 0.0, 0.5, or 1.0 — see module docstring "DECISION"
-    for the scale and update rule. Returns the new mastery estimate.
+    ``outcome`` must be 0.0, 0.5, or 1.0. Returns the new mastery estimate.
     """
     if outcome not in (0.0, 0.5, 1.0):
         raise ValueError(f"outcome must be 0.0, 0.5, or 1.0 — got {outcome!r}")
@@ -231,8 +181,8 @@ def get_knowledge_state(
 ) -> list[dict[str, Any]]:
     """Return current mastery rows for a student (optionally one subject).
 
-    Returns an empty list for unseen students — the cold-start default is
-    a TODO and must be handled by the caller until decided.
+    Returns an empty list for unseen students — the explicit cold-start
+    state, not a guessed default.
     """
     query = "SELECT * FROM mastery WHERE student_id = ?"
     params: tuple[Any, ...] = (student_id,)

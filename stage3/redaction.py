@@ -1,68 +1,35 @@
 """Shared redaction gate for any student-authored text reaching an LLM.
 
-PROVENANCE — NEW (relocated). Originally lived only in
-``stage2_bridge/intake.py`` as a Stage-2-specific gate. Generalised here
-because the same privacy-boundary argument applies to typed chat input just
-as much as to Stage 2 handwriting-recognition output: a student can type a
-name into a chat box exactly as easily as they can write one on paper.
+PROVENANCE — NEW (relocated from a Stage-2-only gate in
+``stage2_bridge/intake.py``; generalised because typed chat input needs
+the same privacy boundary as Stage 2 OCR output).
 
-PRIVACY — THE POINT OF THIS MODULE (Chapter 2 / Chapter 3 argument):
-``redact()`` is FAIL-CLOSED: unredacted student text must never reach a
-cloud LLM via any path — Stage 2 or typed chat.
-
-METHOD — three detection layers, run independently against the original
-text and merged as spans (never sequentially, so one layer's output can't
-confuse another — see ``_merge_spans``), plus one allowlist override:
+FAIL-CLOSED BY DESIGN: unredacted student text must never reach a cloud
+LLM via any path. Three detection layers run independently against the
+original text and are merged as spans (never sequentially, so one layer's
+output can't confuse another — see ``_merge_spans``), plus one allowlist
+override:
 
     A. Known-names register (exact match, ``data/redaction/known_names.txt``,
-       gitignored). A blind "strip capitalised words" heuristic — the
-       original sketch for this module — would wrongly nuke legitimate
-       STEM vocabulary (Newton, DNA, Pythagoras, Ohm); an exact-match
-       register avoids that because it only touches names actually on the
-       list. This is a legitimate closed-cohort assumption for a specific
-       school's specific SEN tutoring deployment (unlike a general-purpose
-       public tool), not a hack.
-    B. Structured PII regex: email addresses, UK phone numbers. Pragmatic,
-       not a validated phone-number library — see TODO.
-    C. Local spaCy NER (PERSON entities), offline, no cloud call — catches
-       names NOT on the register (a friend, an unregistered sibling, an
-       OCR-garbled name). Added because the register alone doesn't satisfy
-       this module's own guarantee: "unredacted text must never reach a
-       cloud LLM" is unconditional, not "text with pre-registered names
-       only" — closing that gap is the entire reason Layer C exists.
-    Allowlist override (``data/redaction/allowed_terms.txt``, COMMITTED —
-       curriculum vocabulary, not student data): Layer C can reintroduce a
-       narrow version of the exact problem Layer A solves — a scientist's
-       eponym (Newton, Faraday, Darwin, Curie) is grammatically identical
-       to a person-possessive ("Newton's third law"), so generic NER may
-       tag it PERSON. The allowlist suppresses redaction of listed terms
-       regardless of which layer matched them. Documented trade-off: a
-       student literally named e.g. "Newton" would have that name
-       protected from redaction by mistake — narrow, real, and stated here
-       honestly rather than pretended away.
+       gitignored) — avoids false-positiving on STEM vocabulary the way a
+       blind "strip capitalised words" heuristic would.
+    B. Structured PII regex: email addresses, UK phone numbers.
+    C. Local spaCy NER (PERSON entities), offline — catches names not on
+       the register (a friend, an unregistered sibling, an OCR-garbled
+       name).
+    Allowlist override (``data/redaction/allowed_terms.txt``, committed —
+       curriculum vocabulary, not student data) — suppresses redaction of
+       listed terms regardless of which layer matched them, so a
+       scientist's eponym ("Newton's third law") isn't wrongly redacted by
+       Layer C.
 
-Matched spans are replaced with bracketed category placeholders
-(``[NAME]``, ``[EMAIL]``, ``[PHONE]``) rather than deleted outright, so
-sentence structure and grammatical role stay intact for the tutor LLM to
-still parse what the student was asking.
+Matched spans are not outright deleted, but replaced with bracketed
+category placeholders (``[NAME]``, ``[EMAIL]``, ``[PHONE]``) to preserve
+sentence structure for the tutor LLM to parse.
 
-TODO:
-    [ ] Date-of-birth / generic date detection deliberately deferred — a
-        date regex would have poor precision in STEM problem text (dates
-        appear legitimately in maths/science/history questions), and no
-        reliable way to distinguish "DOB" from "a date in a word problem"
-        was found without more context than is available here. A known
-        limitation, not an oversight.
-    [ ] Register token collisions with ordinary words (no stoplist is
-        built for this — would need curriculum-vocabulary awareness, the
-        exact problem the register exists to avoid on the NER side; not
-        justified at this scale). If this bites in practice, prefer
-        matching the full name only for that entry over a bespoke list.
-    [ ] UK phone/email regex are pragmatic, not RFC/E.164-validated — no
-        new heavy dependency (e.g. ``phonenumbers``) was added for this.
-    [ ] Evaluate against real (redacted-for-review) sample scripts once
-        Stage 2 produces real output; tune MIN_TOKEN_LEN and the allowlist
-        from what expert review (the SENCO reviewer) actually flags.
+See docs/design/FINDINGS_AND_DECISIONS.md §4 for the rationale behind this
+design and its documented trade-offs, and docs/TODO.md for open items
+(DOB detection, register collisions, phone/email validation).
 """
 
 from __future__ import annotations
@@ -90,20 +57,17 @@ class _Span:
 
 
 _PLACEHOLDER = {"NAME": "[NAME]", "EMAIL": "[EMAIL]", "PHONE": "[PHONE]"}
-# Tiebreak only (used when two spans start at the same position and are the
-# same length) — arbitrary but deterministic, not a priority in any other sense.
+# Tiebreak for equal-start, equal-length spans. Arbitrary but deterministic.
 _CATEGORY_PRIORITY = {"EMAIL": 0, "PHONE": 1, "NAME": 2}
 
 
 def _merge_spans(spans: list[_Span]) -> list[_Span]:
     """Sort by (start, -length) and absorb fully-nested/overlapping spans.
 
-    Longest-first matters concretely: for "email priya.shah@school.org
-    please", the EMAIL span fully contains the register matches for
-    "priya" and "shah" (word boundaries around "." / "@" still count) —
-    sorting by descending length puts EMAIL first at that start position
-    so both NAME spans get absorbed and dropped, giving one clean
-    "[EMAIL]" rather than a "[NAME].[NAME]@..." artifact.
+    Sorting longest-first means a wider EMAIL span at the same start
+    position absorbs any narrower NAME spans nested inside it (e.g. the
+    two halves of an email's local part), instead of both being applied
+    and corrupting the match.
     """
     if not spans:
         return []
@@ -117,7 +81,7 @@ def _merge_spans(spans: list[_Span]) -> list[_Span]:
         if nxt.start < current.end:
             if nxt.end > current.end:
                 merged[-1] = _Span(current.start, nxt.end, current.category)
-            # else: nxt fully inside current — drop it, nothing to do
+            # else nxt is fully inside current: drop it
         else:
             merged.append(nxt)
     return merged
@@ -139,7 +103,7 @@ def _apply_spans(text: str, spans: list[_Span]) -> str:
 # Layer A — known-names register
 # ---------------------------------------------------------------------------
 
-MIN_TOKEN_LEN = 3  # drops initials / very short tokens — false-positive mitigation
+MIN_TOKEN_LEN = 3  # drops initials / very short tokens to cut false positives
 
 _REGISTER_PATTERN_CACHE: Optional[re.Pattern] = None
 
@@ -156,8 +120,8 @@ def _build_register_pattern(names: list[str]) -> Optional[re.Pattern]:
                 phrases.add(token)
     if not phrases:
         return None
-    # Longest-first so full names take precedence over their component
-    # tokens at the same text position (re alternation is first-match-wins).
+    # Longest-first: re alternation is first-match-wins, so a full name
+    # must precede its own component tokens at the same position.
     ordered = sorted(phrases, key=len, reverse=True)
     return re.compile(
         r"\b(?:" + "|".join(re.escape(p) for p in ordered) + r")\b",
@@ -168,8 +132,8 @@ def _build_register_pattern(names: list[str]) -> Optional[re.Pattern]:
 def _load_known_names(path: Path | None = None) -> list[str]:
     p = path or CONFIG.paths.known_names_file
     if not p.exists():
-        # A school not having supplied a register yet is a legitimate
-        # early-deployment state, not an error — Layers B/C still run.
+        # No register yet is a normal early-deployment state, not an
+        # error; Layers B/C still run.
         logger.warning(
             "Known-names register not found at %s — register-based "
             "redaction will match nothing this run.", p,
@@ -218,17 +182,15 @@ def _find_structured_pii_matches(text: str) -> list[_Span]:
 
 
 # ---------------------------------------------------------------------------
-# Layer C — local spaCy NER (lazy-loaded — see module docstring)
+# Layer C — local spaCy NER (lazy-loaded)
 # ---------------------------------------------------------------------------
 
 _NLP = None  # module-level cache, populated on first real use
 
 
 def _get_nlp():
-    """Lazy import + load, matching the GeminiLLM pattern in llm/client.py —
-    so importing this module (e.g. via stage2_bridge.intake's re-export)
-    never forces a spaCy load for code paths that don't call redact().
-    """
+    """Lazy import + load, so importing this module never forces a spaCy
+    load for code paths that don't call redact()."""
     global _NLP
     if _NLP is None:
         import spacy
@@ -236,10 +198,8 @@ def _get_nlp():
         try:
             _NLP = spacy.load("en_core_web_sm")
         except OSError as e:
-            # Deliberately NOT caught by redact() — a missing model must
-            # not silently degrade to register+regex-only. That would
-            # reintroduce exactly the silent-passthrough risk this whole
-            # module exists to prevent.
+            # Not caught by redact(): a missing model must fail loudly,
+            # not silently degrade to register+regex-only.
             raise RuntimeError(
                 "spaCy model 'en_core_web_sm' not found. Run: "
                 "python -m spacy download en_core_web_sm"
@@ -279,9 +239,9 @@ def _load_allowed_terms(path: Path | None = None) -> set[str]:
 def _filter_allowed_spans(
     spans: list[_Span], text: str, allowed: set[str]
 ) -> list[_Span]:
-    """Drop any span whose matched text is on the allowlist — protects
-    against register false-positives too, not just NER ones.
-    """
+    """Drop any span whose matched text is on the allowlist. Applies to
+    every layer, not just NER — protects against register false positives
+    too."""
     if not allowed:
         return spans
     kept = []

@@ -1,0 +1,72 @@
+SKIPPED COMMENTS — plain text, safe to Grammarly and send back as .txt
+(no docx/PDF round-trip this time, so no risk of eaten *, <>, or backticks)
+
+These are the 6 spots I did NOT update from your last PDF, because the
+docx/PDF conversion had visibly corrupted them there. Below is the current,
+correct text for each. Edit freely — just don't change the code
+identifiers (backticked/double-backtick names), the <angle-bracket> paths,
+or the numbers/asterisks in the math lines, since those are exact and not
+prose.
+
+================================================================================
+1. tests/test_student_state_store.py — lines 54-55
+================================================================================
+# EWMA with alpha=0.35: 0.35*1.0 + 0.65*0.0 = 0.35 — moved toward
+# the new outcome, but not all the way (not a simple overwrite).
+
+================================================================================
+2. tests/test_student_state_store.py — lines 147-148
+================================================================================
+# EWMA branch (row already existed), NOT the cold-start
+# new_estimate=outcome branch — alpha=0.35:
+# 0.35*1.0 + 0.65*0.15 = 0.4475, not a fresh 1.0.
+
+================================================================================
+3. stage3/connectors/curriculum_docs.py — lines 12-15
+================================================================================
+Expected layout under data/curriculum/ (drives metadata):
+
+    data/curriculum/<subject>/<provenance_tier>/<files>
+    e.g. data/curriculum/biology/awarding_body_spec/organisms.md
+
+================================================================================
+4. stage3/tutor/prompt_template.py — lines 8-17 (DESIGN RULE paragraph +
+   the paragraph right after it)
+================================================================================
+DESIGN RULE: every field that reaches the prompt is named in the function
+signature below. Nothing is interpolated wholesale. ``_guard`` rejects any
+value containing a forbidden key, so a future refactor can't quietly
+reintroduce the helpdesk pattern.
+
+``explanation_method`` and ``pending_understanding_check`` wire in
+Thompson-sampled explanation-method selection (see
+``student_state/explanation_method.py``); the latter asks the LLM to end
+its reply with a trailing ``[[UNDERSTANDING: yes|no]]`` marker, parsed by
+``student_state.explanation_method.parse_understanding_marker``.
+
+================================================================================
+5. tests/test_chat_session.py — lines 1-11 (whole module docstring)
+================================================================================
+Regression coverage for tutor/chat_session.py's run_chat_turn.
+
+Added 2026-08-17 after finding this path was broken: the normal-tutoring
+branch called `bundle.profile_note`, a ContextBundle field removed during
+the Stage 1 refactor, so every real tutoring turn past the diagnostic
+would have raised AttributeError. Nothing caught it because this module
+had no test coverage at all. `search_kb` and the LLM client are stubbed
+so this stays a fast, offline test; conversations/student-state DBs are
+redirected to a temp file per test via CONFIG, matching the db_path
+pattern used elsewhere, since chat_session.py doesn't expose one itself.
+
+================================================================================
+6. stage3/tutor/diagnostic.py — lines 1-9 (opening paragraph)
+================================================================================
+LLM-graded diagnostic Q&A — the mastery-baseline mechanism.
+
+PROVENANCE — NEW. Implements the mechanism behind
+``student_state/store.py::record_observation``: each topic thread opens
+with a short Q&A that seeds a real mastery estimate, rather than starting
+cold. Kept as its own module rather than folded into
+``prompt_template.py`` because it has a genuinely different prompt
+contract: the LLM must emit a machine-parseable score marker alongside its
+visible reply.

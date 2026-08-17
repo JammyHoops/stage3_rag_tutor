@@ -1,72 +1,43 @@
 """Per-student explanation-method selection — Thompson sampling.
 
 PROVENANCE — NEW. Implements
-``docs/design/stage3-explanation-method-design.md`` (status: decided).
-This SUPERSEDES what ``tutor/context_builder.py::profile_to_note`` was
-originally going to be (a fixed disability-category -> scaffolding-method
-lookup table). Real research showed that's the wrong design: the SEND
-Code of Practice and EEF's SEND guidance both push against
-diagnosis-keyed strategy rules in favour of universal adaptive teaching,
-evaluated per student. So instead of a static table, the tutor tracks,
-per (student, method), whether that method has actually worked for THAT
-student, and picks a method each turn accordingly. ``profile_to_note``
-itself is untouched by this — it's a separate, still-unmade Stage 1
-decision (see that module's own TODO).
+``docs/design/stage3-explanation-method-design.md``. Supersedes an
+earlier plan to key scaffolding off a fixed disability-category lookup
+table; see docs/design/FINDINGS_AND_DECISIONS.md §6 for why (SEND Code of
+Practice / EEF guidance). The tutor instead tracks, per (student, method),
+whether that method has actually worked for that student, and picks a
+method each turn accordingly.
 
-Kept as a SIBLING module to ``student_state/store.py``, not folded into
-it, even though both live in the same SQLite file
-(``CONFIG.paths.student_db``) — see the note in ``store.py``'s docstring.
-The design doc frames this as "an extension of the per-student
-knowledge-state source, not a new context source" (unlike the Stage 1
-profile, source 3), which is why it shares mastery's DB file rather than
-getting a separate one the way ``conversations.db`` does.
+Kept as a sibling module to ``student_state/store.py``, sharing the same
+SQLite file, but a separate schema — see that module's docstring.
 
 MECHANISM (Thompson sampling, Beta-Bernoulli per (student, method)):
     - Each (student, method, signal_type) pair has a Beta(alpha, beta)
       posterior over "does this method work for this student".
-    - Cold start: a student with no data for a method is governed by that
-      method's COHORT prior (``method_cohort_prior``); if no cohort data
-      exists yet either, a uniform ``Beta(1, 1)`` default is used —
-      confirmed with the user rather than inventing numeric priors
-      attributed to EEF's guidance, which does not actually publish
-      per-method numeric success rates for this taxonomy. Neutral is the
-      honest default; differentiation only emerges from real data.
-    - Selection samples ONE draw per method from its current posterior and
-      picks the argmax — not the highest mean. A method with a high mean
-      but few observations has a wide posterior, so it still gets picked
-      sometimes (exploration), while a mediocre early result isn't
-      permanently discarded (no epsilon-greedy bolt-on needed).
+    - Cold start: a student with no data for a method uses that method's
+      cohort prior (``method_cohort_prior``), or a uniform ``Beta(1, 1)``
+      default if the cohort has no data either.
+    - Selection samples one draw per method from its current posterior
+      and picks the argmax, not the highest mean — so a method with a
+      high mean but few observations still gets picked sometimes
+      (exploration), and a mediocre early result isn't permanently
+      discarded.
 
-SIGNAL SCOPE THIS PASS: only ``signal_type="immediate"`` is ever written.
-``correct_retention`` / ``retention_gap_days`` exist in the schema (per
-the design doc) but stay NULL — the design doc itself leaves "how long a
-gap counts as retention" as an open item, so populating it now would mean
-guessing a threshold. Not a new deferral, just following the doc's own.
+Only ``signal_type="immediate"`` is ever written; ``correct_retention``/
+``retention_gap_days`` exist in the schema but stay NULL — see
+docs/TODO.md.
 
-ONE LLM CALL, NOT TWO: rather than a dedicated grading call (which would
-double latency/cost on every ordinary tutoring turn), the correctness
-signal is folded into the SAME normal-turn LLM call as a second trailing
-marker line, mirroring ``tutor/diagnostic.py``'s
-``[[MASTERY_SCORE: x]]`` pattern for the (unrelated) mastery mechanism.
+One LLM call, not two: the correctness signal is folded into the same
+normal-turn call as a trailing marker line, mirroring
+``tutor/diagnostic.py``'s ``[[MASTERY_SCORE: x]]`` pattern.
 ``parse_understanding_marker`` below is that marker's parser; the prompt
-side lives in ``tutor/prompt_template.py``, and the turn-by-turn wiring
-in ``tutor/chat_session.py``.
+side lives in ``tutor/prompt_template.py``, turn-by-turn wiring in
+``tutor/chat_session.py``.
 
-CONCEPT RESOLUTION: no new concept-tracking machinery. The caller passes
-whatever ``concept_id`` the top retrieved curriculum chunk carries (see
-``connectors/isaac_science.py`` / ``connectors/ada_computer_science.py``).
-Subjects with no curriculum content (mathematics/english) simply never
-produce a ``concept_id``, so method selection/logging is a no-op there —
-same graceful degradation as the rest of ``context_builder.py``.
-
-TODO (deliberately not decided here — see design doc "Open items"):
-    [ ] Retention signal / retention window.
-    [ ] Splitting the (student, method) posterior by subject or concept
-        instead of student-level only — doc says start coarse, only
-        split with evaluation evidence.
-    [ ] ``recompute_cohort_priors`` has no scheduler — nothing else in
-        this project does either (``ingest.py`` is manually invoked
-        too). Run it manually / periodically; see ``__main__`` below.
+No new concept-tracking machinery: the caller provides whatever
+``concept_id`` the top retrieved curriculum chunk has. If there is no
+curriculum content for a subject, then no ``concept_id`` is ever
+generated, so this is a clean no-op.
 """
 
 from __future__ import annotations
@@ -125,9 +96,8 @@ METHOD_LABELS: dict[str, str] = {
     ),
 }
 
-# Uniform, deliberately uninformative cold-start prior — confirmed with
-# the user (see module docstring). Used only when NEITHER the student NOR
-# the cohort has any data yet for a given method.
+# Uniform, deliberately uninformative cold-start prior. Used only when
+# neither the student nor the cohort has any data yet for a given method.
 DEFAULT_PRIOR_ALPHA = 1.0
 DEFAULT_PRIOR_BETA = 1.0
 

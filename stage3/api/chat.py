@@ -1,36 +1,20 @@
 """Chat/conversation endpoints — the API surface for a Claude-Projects-style UI.
 
-PROVENANCE — NEW. Split into its own router (rather than growing
-``api/main.py`` further) since this adds six routes on top of the existing
-three. Subject = project, topic = chat within that project, matching the
-taxonomy in ``stage3/taxonomy/topics.py`` and the persistence in
-``stage3/conversations/store.py``.
+PROVENANCE — NEW. Split into its own router rather than growing
+``api/main.py`` further. Subject = project, topic = chat within that
+project, matching the taxonomy in ``stage3/taxonomy/topics.py`` and the
+persistence in ``stage3/conversations/store.py``. No auth exists or is
+planned — local-only research prototype, ``student_id`` passed explicitly
+per request; see ``api/main.py``'s docstring.
 
-TODO:
-    [ ] Auth: none exists or is planned (local-only research prototype,
-        student_id passed explicitly per request — see api/main.py docstring).
-
-DONE: POST /conversations/{id}/messages no longer 501s for normal
-tutoring — redact() and summarise_state() are both implemented now (see
-tutor/chat_session.py, tutor/context_builder.py). The 501 branch is kept
-as a general safety net for any future NotImplementedError, not because
-one is currently expected — profile_to_note (2026-08-16) was the last
-one and is real now too, see tutor/context_builder.py.
-
-DONE (2026-08-14): every endpoint that can trigger an LLM call
-(POST /conversations, /reassess, /messages) now catches
-``llm.client.LLMGenerationError`` and returns 503, rather than letting a
-hard LLM failure silently produce a blank persisted tutor message (see
-that module's docstring — caught directly during live testing, not
-hypothetical). The frontend already had a generic non-501 error path
-(`ChatThread`'s `sendState === "error"`, `ConversationList`'s
-`createError`, `handleReassess`'s catch) built for exactly this shape of
-failure, so no frontend change was needed. ``post_conversation`` also
-now retries the opening diagnostic question on a re-fetch of an existing
-conversation that never got one (0 questions asked, still 'pending') —
-without this, a first-creation LLM failure would leave that thread
-permanently stuck, since ``get_or_create_conversation`` only reports
-``created=True`` once.
+Any endpoint that can trigger an LLM call (POST /conversations,
+/reassess, /messages) catches ``llm.client.LLMGenerationError`` and
+returns 503, instead of a hard failure silently resulting in a blank
+persisted tutor message. ``post_conversation`` also re-asks the opening
+diagnostic question on a re-fetch of an existing conversation that never
+got one (0 questions asked, still 'pending'). Without this, if a
+first-creation LLM call fails, that thread would be stuck forever, since
+``get_or_create_conversation`` only reports ``created=True`` once.
 """
 
 from __future__ import annotations
@@ -94,23 +78,21 @@ def get_conversations(student_id: str, subject: Optional[str] = None):
 
 @router.post("/conversations")
 def post_conversation(body: ConversationCreate, request: Request):
-    """Get-or-create: idempotent per (student, subject, topic) — see
-    conversations/store.py's module docstring. Safe to call every time a
-    topic is clicked in the UI; never creates a duplicate thread.
+    """Get-or-create: idempotent per (student, subject, topic). Safe to
+    call every time a topic is clicked in the UI; never creates a
+    duplicate thread.
 
     On a genuine first creation, synchronously starts the diagnostic
-    round (tutor speaks first — see tutor/chat_session.py::
-    start_diagnostic) so the opening question is already there by the
-    time the frontend fetches messages. This is the ONLY call site that
-    passes student_id/profiles into start_diagnostic — see that
-    function's docstring for why: this is the one genuinely cold-start
-    moment Stage 1 data is allowed to touch anything.
+    round (tutor speaks first) so the opening question is already there
+    by the time the frontend fetches messages. This is the only call site
+    that passes student_id/profiles into start_diagnostic — see that
+    function's docstring for why.
 
-    Also retries the opening question on an EXISTING conversation that
+    Also retries the opening question on an existing conversation that
     never actually got one (0 questions asked, still 'pending') — the
-    only way that state can persist is a previous LLMGenerationError
-    (see module docstring), and without this retry the thread would be
-    stuck forever, since `created` only reports True once.
+    only way that state can persist is a previous LLMGenerationError, and
+    without this retry the thread would be stuck forever, since `created`
+    only reports True once.
     """
     if get_topic(body.subject, body.topic) is None:
         raise HTTPException(
@@ -143,14 +125,11 @@ def post_conversation(body: ConversationCreate, request: Request):
 @router.post("/conversations/{conversation_id}/reassess")
 def post_conversation_reassess(conversation_id: int):
     """Explicit "Re-check my understanding" — starts a fresh diagnostic
-    round on an EXISTING thread (not a new conversation), per the
-    one-thread-per-topic decision. See conversations/store.py::
-    reset_diagnostic and tutor/chat_session.py::start_diagnostic.
+    round on an existing thread, not a new conversation.
 
-    Deliberately does NOT pass student_id/profiles to start_diagnostic —
-    a re-check means the student already has tutoring history, so this
-    is no longer "cold start" in the sense Stage 1 data is meant for
-    (see start_diagnostic's own docstring). Not a missed wiring spot.
+    Deliberately does not pass student_id/profiles to start_diagnostic: a
+    re-check means the student already has tutoring history, so this is
+    no longer "cold start" in the sense Stage 1 data is meant for.
     """
     conversation = get_conversation(conversation_id)
     if conversation is None:

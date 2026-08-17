@@ -1,73 +1,24 @@
 """Vector search with local reranking over the curriculum KB.
 
-PROVENANCE — KEPT (adapted) from AI_IT_Helpdesk
-``services/kb_agent/retriever/search.py``.
-
-WHY KEPT: this is the most defensible part of the helpdesk design. Rather
-than trusting raw vector similarity, it over-fetches candidates
-(top_k * 4) and reranks with an explicit, explainable blend:
+PROVENANCE — KEPT (adapted) from AI_IT_Helpdesk. Rather than trusting raw
+vector similarity, this over-fetches candidates (top_k * 4) and reranks
+with an explicit, tuneable blend:
 
     rank = (similarity * 0.70 + provenance_trust * 0.25 + feedback * 0.05)
            * time_decay
 
-Every term is named and tuneable, which supports a reasoned account of
-ranking in Chapter 3 instead of a black box. Both the raw Chroma distance
-and the adjusted score are retained on every result, deliberately: that
-enables a reranker-vs-raw-similarity ablation table in Chapter 4 at no
-extra cost.
+Both the raw Chroma distance and the adjusted score are retained on every
+result, so a reranker-vs-raw-similarity comparison is possible later at no
+extra cost. The helpdesk's ticket-source filter is replaced by a
+subject/topic/difficulty_tier metadata filter here.
 
-ADAPTATIONS for Stage 3:
-- The helpdesk's ``exclude_facilities`` ticket filter is replaced by a
-  subject/topic metadata filter, so retrieval can be scoped to the subject
-  the student is working in.
-- ``kb_score`` now encodes curriculum provenance (set at ingest — see
-  stage3/ingest.py) rather than ticket-source trust.
+See docs/design/FINDINGS_AND_DECISIONS.md §3 for the weight sanity-check
+findings and why time-decay is currently a no-op, and docs/TODO.md for the
+open question about feedback-semantics and the blend-weight tuning study.
 
-DONE (2026-08-16): weight sanity-check + decay decision.
-
-WEIGHT SANITY-CHECK — ran 7 real questions across all 3 subjects
-(2 biology, 2 chemistry, 3 computer_science, top_k=3 each) through
-`search_kb` against the live re-ingested corpus and inspected raw
-similarity vs. adjusted `rank_score` ordering. Finding worth recording
-honestly: `kb_score` is currently 2.0 (`third_party_education_platform`)
-on EVERY chunk in the corpus — no `awarding_body_spec`/`mark_scheme`
-source has been collected yet (see ingest.py's PROVENANCE_SCORES) — so
-the provenance term is a constant offset right now and does not actually
-discriminate between candidates; observed ranking in this sanity-check
-was effectively driven by similarity alone. That is expected, not a bug:
-the term will start discriminating the moment a higher- or lower-tier
-source is added. Within that constraint, ordering was sane in all 7
-cases — top hits were topically on-target, no evidence of the small
-feedback term (all `fb_pos`/`fb_neg` are 0 on this corpus, so it
-contributed nothing either) producing a bad ranking. This is a sanity
-check, not a tuning exercise or an ablation — a real blend-weight
-tuning study (and the reranker-vs-raw-similarity ablation the module
-design already supports) belongs with the evaluation instrument in
-Chapter 4, once there's provenance-tier diversity in the corpus to
-actually tune against.
-
-DECAY DECISION — kept, not removed, but documented as currently inert:
-`_decay_multiplier` only discounts chunks carrying `last_feedback_at`,
-and no curriculum chunk has that field yet (feedback write-up is a
-separate, still-open TODO — see vectordb/store.py). So for all real
-content today `time_decay == 1.0` unconditionally; it has no effect to
-decide "keep or remove" yet. Framing for Chapter 3: this is a
-FEEDBACK-recency decay (a chunk whose feedback signal is stale should
-count for less), not a CONTENT-staleness decay — curriculum specifications
-do not go stale the way a ticket fix does, and this mechanism was never
-meant to imply otherwise. Revisit only once feedback semantics land.
-
-    [ ] Feedback semantics: see TODO in vectordb/store.py.
-
-DONE: `difficulty_tier` filter parameter added (alongside `subject` /
-`topic`) — see docs/design/stage3-curriculum-retrieval-design.md. Not
-`tier`, which would collide with the existing `provenance_tier`. This
-makes foundation-tier content (currently only real for Ada Computer
-Science — see connectors/ada_computer_science.py) retrievable on request;
-it is NOT wired into an automatic trigger anywhere yet — context_builder.
-build_context still only calls search_kb without it. The trigger itself
-is blocked on student_state/store.py's mastery-rule stub, a separate,
-deliberate fail-closed decision.
+``difficulty_tier`` (alongside ``subject``/``topic``) makes foundation-tier
+content retrievable on request; it is not wired into an automatic trigger
+anywhere yet — see docs/TODO.md.
 """
 
 from __future__ import annotations
@@ -88,10 +39,8 @@ def build_metadata_filter(
 ) -> Optional[Dict[str, Any]]:
     """Scope retrieval to a subject (and optionally topic / difficulty_tier).
 
-    ``difficulty_tier`` is "core" | "foundation" — deliberately not named
-    `tier`, which would collide with the existing `provenance_tier` (trust
-    axis). See module docstring: this is additive, not yet called with a
-    value from anywhere in the automatic tutoring pipeline.
+    ``difficulty_tier`` is "core" | "foundation" — not named `tier`, which
+    would collide with the existing `provenance_tier` (trust axis).
 
     Chroma requires ``$and`` for multiple conditions.
     """
@@ -128,8 +77,7 @@ def _parse_iso(ts: Any) -> Optional[datetime]:
 
 
 def _decay_multiplier(meta: Dict[str, Any]) -> float:
-    """Read-time decay of old feedback (floor 0.70). See module TODO on
-    whether this stays for curriculum content."""
+    """Read-time decay of old feedback (floor 0.70)."""
     last = _parse_iso(meta.get("last_feedback_at"))
     if not last:
         return 1.0

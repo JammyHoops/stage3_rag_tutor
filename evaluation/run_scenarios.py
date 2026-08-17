@@ -1,38 +1,23 @@
 """Generate real, grounded transcripts for the fixed scenario set.
 
 PROVENANCE — NEW. Runs each ``evaluation/scenarios.json`` scenario
-through the SAME building blocks a real tutoring turn uses —
-``retriever/search.py::search_kb``, ``tutor/context_builder.py::
+through the same building blocks a real tutoring turn uses
+(``retriever/search.py::search_kb``, ``tutor/context_builder.py::
 summarise_state``, ``tutor/prompt_template.py::build_prompt``,
-``llm/client.py``'s ``generate`` — so the transcript is real evidence of
-what the deployed system produces, not a hand-written mockup.
+``llm/client.py``'s ``generate``), so the transcript is real evidence of
+what the deployed system produces.
 
-Deliberately does NOT go through ``tutor/chat_session.py::run_chat_turn``:
-that function is wired to a real ``student_id`` (mastery writes,
-explanation-method Thompson sampling + interaction logging). Scenarios
-are fixed/synthetic on purpose — routing them through the stateful chat
-machinery would pollute real per-student tables with fake data and
-consume real Thompson-sampling draws for nothing. This also cleanly
-sidesteps ``tutor.context_builder.profile_to_note`` (still a deliberate
-stub) — ``profile_note`` is built directly from each scenario's
-``scaffolding_note``, never calling ``get_profile``/``profile_to_note``
-at all.
+Deliberately does not go through ``tutor/chat_session.py::run_chat_turn``:
+that function writes real mastery/Thompson-sampling data keyed to a real
+student_id, and scenarios are fixed/synthetic on purpose. See
+docs/design/FINDINGS_AND_DECISIONS.md §8 for the full reasoning.
 
 A hard LLM failure (``llm.client.LLMGenerationError``) is allowed to
-propagate and abort the run — a scenario that silently produced no
-transcript would be worse than a run that visibly failed and can be
-resumed. Transcripts are written INCREMENTALLY (flushed after each
-scenario), not all at once at the end, specifically because of this:
-losing already-succeeded scenarios to one later failure would waste real
-quota. See llm/client.py's TODO — Gemini's free tier caps at both 20
-requests/DAY and, confirmed live 2026-08-15, 5 requests/MINUTE for
-gemini-3.7-flash — so this module paces itself with ``SCENARIO_DELAY_
-SECONDS`` between calls rather than firing all 6 back-to-back, which is
-exactly what tripped the per-minute cap the first time this was run for
-real. That pacing is deliberately NOT applied to ``LLMClient.generate``'s
-own retry backoff (see that module) — a real single tutoring turn should
-still fail fast, not wait out a whole minute; only this batch script's
-rapid-fire pattern needs it.
+propagate and abort the run. Transcripts are written incrementally
+(flushed after each scenario) so an already-succeeded scenario is never
+lost to a later failure. Paced with ``SCENARIO_DELAY_SECONDS`` between
+calls — see docs/TODO.md for the Gemini free-tier rate limits this works
+around.
 
 Usage:  python -m evaluation.run_scenarios
 """
@@ -103,14 +88,13 @@ def generate_transcripts(
     out_path: Path = TRANSCRIPTS_PATH,
     delay_seconds: float = SCENARIO_DELAY_SECONDS,
 ) -> list[dict[str, Any]]:
-    """Run every scenario for real, OVERWRITING ``out_path`` at the START
-    (not append — a transcript file is a snapshot of one run of the
-    CURRENT scenario set, not an accumulating log; ``expert_review.py``'s
-    ``review_records.jsonl`` is the append-only one) then writing each
-    result as it completes, paced ``delay_seconds`` apart. If a later
-    scenario fails, everything successfully generated before it is
-    already safely on disk — see module docstring for why that matters
-    here specifically (real, scarce API quota)."""
+    """Run every scenario for real, overwriting ``out_path`` at the start
+    (a transcript file is a snapshot of one run, not an accumulating log —
+    ``expert_review.py``'s ``review_records.jsonl`` is the append-only
+    one), then writing each result as it completes, paced ``delay_seconds``
+    apart. If a later scenario fails, everything generated before it is
+    already safely on disk.
+    """
     scenario_list = scenarios if scenarios is not None else load_scenarios()
     llm = llm or get_client()
 

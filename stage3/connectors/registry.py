@@ -1,17 +1,10 @@
 """Connector registry.
 
-PROVENANCE — pattern KEPT from the helpdesk's ``KBAgent.CONNECTORS``
-mapping; the IT sources it pointed at have been removed.
-
-TODO:
-    [ ] Add further connectors as they are built, e.g. a mark-scheme
-        connector if mark schemes need different parsing from
-        specifications, or a worked-examples connector.
-
-All three subjects are now sourced (Isaac Science Biology/Chemistry —
-core tier only, no real GCSE content available there; Ada Computer
-Science — genuine core + foundation tiers, see connectors/
-ada_computer_science.py's module docstring for why it's the odd one out).
+PROVENANCE — pattern KEPT from the helpdesk's connector mapping; the IT
+sources it pointed at have been removed. All three in-scope subjects are
+sourced: Isaac Science for Biology/Chemistry (core tier only), Ada
+Computer Science (core + foundation tiers — see that connector's
+docstring for why it's the only one with real foundation content).
 """
 
 from __future__ import annotations

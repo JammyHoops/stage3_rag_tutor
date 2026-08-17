@@ -8,9 +8,19 @@ document is built and live-verified — see README's "Stage 1 wiring"
 section for the full mechanism. Kept below as the historical record of
 what was asked for vs. what was actually decided (the real schema
 differs in a few small, worth-knowing ways from what was speculated
-here — see the summary at the very bottom). Ethics approval for a REAL
-(non-synthetic) export is still a separate, ongoing institutional
-process, unaffected by this.
+here — see the summary at the very bottom).
+
+**A REAL (non-synthetic, ethics-approved) export is deliberately NOT
+being pursued** (user decision, 2026-08-16, not a deferral) — this
+project's evaluation is a qualitative SENCO expert review, not a
+comparative outcomes study, so there's no pre/post or control-group
+design for real numbers to be weighed against; they'd prove the same
+mechanism the synthetic fixture already proves end-to-end, at the cost
+of a real ethics-approval process, for no additional evaluative power.
+The "What's genuinely outside my lane here" section below (the offer to
+help draft an ethics-application field list) is accordingly moot — kept
+as historical record of what the ask would have looked like, not a live
+offer.
 
 Scope: the CSV handoff from Stage 1 (learner-profile / attainment-gap
 analysis over the LAET extract) to Stage 3 (this tutor). Does not cover

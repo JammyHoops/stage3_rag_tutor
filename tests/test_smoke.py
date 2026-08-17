@@ -7,10 +7,6 @@ ingest runs instead.
 
 Run:  python -m pytest tests/  (or: python -m unittest discover tests)
 
-TODO:
-    [ ] Add retrieval tests once the real chunker lands (small fixture
-        corpus, assert expected chunk comes back top-3).
-
 Redaction: the register/regex/allowlist layers are covered here (no
 spaCy needed); the full NER-backed pipeline is in tests/test_redaction.py.
 """

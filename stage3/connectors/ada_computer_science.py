@@ -1,88 +1,33 @@
 """Connector for Ada Computer Science (adacomputerscience.org).
 
 PROVENANCE — NEW. Third subject for the core/foundation curriculum-tiering
-design (docs/design/stage3-curriculum-retrieval-design.md), and the first
-connector to deliver a *genuine* foundation tier.
+design (docs/design/stage3-curriculum-retrieval-design.md), and the only
+connector that delivers a genuine foundation (GCSE) tier — see
+docs/design/FINDINGS_AND_DECISIONS.md §2 for why Isaac Science's
+Biology/Chemistry content doesn't.
 
-WHY NOT IN isaac_science.py: this is a different domain
-(adacomputerscience.org, not isaacscience.org) running the same
-open-source platform (confirmed live: identical ``isaacConceptPage`` JSON
-shape, identical ``/api/{version}/api/pages/concepts`` path). ``_clean_
-markdown`` and ``_collect_text_fragments`` are imported from
-``isaac_science.py`` rather than duplicated — genuinely shared logic.
-Everything else here is new because the tier extraction is structurally
-different: Isaac Science's Biology/Chemistry connector decides
-``difficulty_tier`` once per whole concept; this one decides it per
-SECTION, because that's what Ada's data actually supports (see below).
+Runs the same open-source platform as Isaac Science (identical JSON shape,
+identical API path, on a different domain) — ``_clean_markdown`` and
+``_collect_text_fragments`` are imported from ``isaac_science.py`` rather
+than duplicated. Tier extraction is structurally different from that
+connector though: Isaac Science decides ``difficulty_tier`` once per whole
+concept; this one decides it per SECTION, because individual accordion
+sections here carry their own ``audience`` list.
 
-WHY A GENUINE FOUNDATION TIER, UNLIKE BIOLOGY/CHEMISTRY: checked directly
-against the live API before writing this (see conversation / plan). Isaac
-Science has no real GCSE content for Biology (0 concepts) and Chemistry's
-GCSE-tagged concepts share identical text with their A-level version — no
-simpler explanation exists to blend in. Ada's concept pages are
-different: individual accordion sections carry their OWN ``audience``
-list, and GCSE-only sections contain a genuinely simpler technique, not
-re-tagged prose. Confirmed example (``number_arithmetic``, "Binary
-arithmetic"): "Binary multiplication (whole numbers)" is tagged
-``a_level``-only, while "Binary multiplication (left shift)" — a
-different, simpler technique — is tagged ``gcse``-only. That is what
-``difficulty_tier`` is built from here.
+``concept_id`` is stored explicitly on every document. ``prerequisites``
+is stored as ``None`` — see docs/TODO.md for the foundation-tier trigger
+this blocks.
 
-CONCEPT-ID / PREREQUISITES: ``concept_id`` (Isaac's own id, e.g.
-``number_arithmetic``) is stored explicitly on every document — the
-concept-ID granularity blocker in the design doc is resolved this far,
-honestly. What it is NOT resolved into is a cross-concept ``prerequisites``
-graph: Ada's data gives same-concept, lower-difficulty SECTIONS, not a
-dependency graph between different concepts. The practical consequence:
-whenever the foundation-tier trigger is eventually built (still out of
-scope — see student_state/store.py's mastery-rule stub, which it
-depends on), the natural query for "simpler treatment of what the student
-is currently asking about" is `difficulty_tier="foundation"` filtered to
-the SAME `concept_id` already in play — not a lookup into a hand-authored
-`prerequisites` list. `prerequisites` is stored as `None`, matching
-isaac_science.py's convention for fields this source doesn't provide.
+PINNED API VERSION: same version string as Isaac Science (``v4.2.7``) at
+time of writing, pinned independently since this is a separate deployment
+of the platform. Same failure mode / rediscovery method as documented in
+``isaac_science.py``.
 
-PINNED API VERSION: confirmed working with the same version string as
-Isaac Science (``v4.2.7``) at time of writing, but pinned independently —
-this is a separate deployment of the same platform and could drift out of
-lockstep. Same failure mode / rediscovery method as documented in
-isaac_science.py's module docstring (502, or JSON where the SPA's HTML
-shell was expected).
-
-CORRECTED (2026-08-16): the design doc's assumed licence, CC BY-SA (no
-version stated), was WRONG — confirmed via a headless-browser render
-(adacomputerscience.org is also a JS-rendered SPA; a plain fetch only
-returns an empty shell, which is why this wasn't caught earlier). The
-actual footer text and CC link target, checked on multiple concept
-pages and the homepage, is **CC BY-NC-SA 4.0** — it DOES carry a
-NonCommercial clause, unlike what was assumed. ``licence`` below is now
-``CC-BY-NC-SA-4.0``. RE-INGESTED same day (``python -m stage3.ingest
---source ada_computer_science`` — 1908 chunks, 344 concepts, count
-unchanged from before, confirming the idempotent upsert worked) — this
-connector's stored Chroma metadata is current, not stale. See the
-matching note in ``isaac_science.py`` for why the CC-attribution feature
-still derives licence from `source` rather than the stored field
-regardless (robustness, not a workaround for stale data anymore).
-
-TODO:
-    [ ] `spec_code`: Ada's audience data includes an `examBoard` list per
-        section (e.g. ["aqa","ocr","wjec"]) but not a specific spec code
-        number — left `None` rather than guessed, same policy as Isaac
-        Science. The exam-board list itself is discarded, not stored; add
-        it as its own field later if a consumer needs it.
-    [ ] Project/meta tags (`projects`, `web_project`, `database_project`,
-        `progamming_project`, `aqa_nea_project`, `ocr_nea_project`,
-        `design_and_development`, `effective_use_of_tools`) are
-        deliberately excluded from `_TAG_TO_TOPIC` — checked against real
-        ingest results (see conversation): every concept carrying one of
-        these ALSO carries a more specific content-area tag (`hardware`,
-        `software`, `program_design`, `testing`, etc. — all mapped) except
-        genuine NEA/coursework project-scenario concepts (~40 of them,
-        e.g. `projweb_coursepal_*`, `dbs_scenario_*`), which really are
-        applied-project scaffolding rather than topic-explanation content
-        and are correctly left unmapped — won't surface in topic-filtered
-        retrieval, still findable via subject-only retrieval. Not a gap to
-        close, a deliberate content-type distinction.
+Licence is CC BY-NC-SA 4.0 (confirmed via headless-browser render — see
+FINDINGS_AND_DECISIONS.md §2). ``spec_code`` is left ``None``: Ada's
+audience data includes an ``examBoard`` list per section but not a spec
+code number. Project/coursework meta-tags (NEA scenario concepts) are
+deliberately excluded from ``_TAG_TO_TOPIC`` — see docs/TODO.md.
 """
 
 from __future__ import annotations
@@ -104,19 +49,15 @@ BASE_URL = f"https://adacomputerscience.org/api/{API_VERSION}/api"
 
 REQUEST_TIMEOUT = 15  # seconds
 
-# Hand-authored, extensible — see module docstring "TODO" re: excluded
-# project/meta tags. Keys are Ada tag strings, lowercased with
-# spaces→underscores.
+# Hand-authored, extensible. Keys are Ada tag strings, lowercased with
+# spaces->underscores. See docs/TODO.md for excluded project/meta tags.
 _TAG_TO_TOPIC: dict[str, str] = {
     "programming": "programming",
     "programming_concepts": "programming",
     "subroutines": "programming",
     "object_oriented_programming": "programming",
-    # program design / software engineering process / testing — grouped
-    # under "programming" (matches how exam-board specs place these:
-    # design, testing and the dev lifecycle sit in the Programming paper,
-    # not Computer Systems). Reached via their specific co-tags, not the
-    # "design_and_development" meta-tag itself — see module docstring TODO.
+    # design/testing/dev-lifecycle content sits in the Programming paper
+    # in exam-board specs, not Computer Systems, so it's grouped here too.
     "program_design": "programming",
     "software_engineering_principles": "programming",
     "testing": "programming",
@@ -150,13 +91,10 @@ _TAG_TO_TOPIC: dict[str, str] = {
 def _section_difficulty_tier(stages: set[str]) -> Optional[str]:
     """Map a section's own audience stages to our difficulty_tier.
 
-    a_level takes priority if both are present (matches the existing
-    Biology/Chemistry convention: a_level-inclusive content is safe to
-    surface by default). gcse-only sections are the genuine foundation
-    content — see module docstring. Anything else (Scotland's
-    scotland_national_5 / scotland_higher / scotland_advanced_higher, or
-    Ada's own internal "core"/"advanced" curriculum labels with neither
-    gcse nor a_level present) is not guessed at — skipped.
+    a_level takes priority if both are present. gcse-only sections are the
+    genuine foundation content. Anything else (Scotland's own stage
+    labels, or Ada's internal "core"/"advanced" labels with neither gcse
+    nor a_level present) is skipped, not guessed.
     """
     if "a_level" in stages:
         return "core"
@@ -167,11 +105,10 @@ def _section_difficulty_tier(stages: set[str]) -> Optional[str]:
 
 def _extract_tiered_sections(concept: dict[str, Any]) -> list[dict[str, Any]]:
     """Split one concept JSON into tiered sections: the top-level intro
-    (tiered from the concept's own top-level audience) plus one section
-    per accordion sub-item (tiered from that item's own audience — Ada's
-    accordion items carry their own audience list, unlike Isaac Science's
-    where only the whole concept is tiered). Sections whose stages don't
-    resolve to a difficulty_tier are dropped, not guessed.
+    (tiered from the concept's own audience) plus one section per
+    accordion sub-item (tiered from that item's own audience — unlike
+    Isaac Science, where only the whole concept is tiered). Sections whose
+    stages don't resolve to a difficulty_tier are dropped, not guessed.
     """
     title = concept.get("title") or concept.get("id", "untitled")
     concept_stages = {

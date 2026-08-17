@@ -1,50 +1,32 @@
 """Structured expert review capture for Stage 3 evaluation.
 
 PROVENANCE — NEW. No helpdesk equivalent; the helpdesk was never formally
-evaluated. Stage 3's evaluation method is structured expert review (SENCO
-reviewer, remote), so the instrument needs to exist in code: fixed
+evaluated. Stage 3's evaluation method is structured expert review (a
+SENCO reviewer, remote), so the instrument needs to exist in code: fixed
 scenarios in, per-criterion ratings out, saved verbatim.
 
-Records are appended as JSONL — one object per (scenario, criterion) or
-per scenario with nested criteria (decide below) — so nothing is
-overwritten and the raw record can be archived to UEL OneDrive as required
-by the Research Data Management review.
+Records are appended as JSONL, one object per (scenario, criterion), so
+nothing is overwritten and the raw record can be archived as required by
+the Research Data Management review.
 
-Placeholder criteria (STILL not finalised with the supervisor — see TODO
-below; built against as a working draft, confirmed with the user rather
-than blocking tooling on a sign-off that hasn't happened yet):
-  - grounding_accuracy   (response consistent with cited extracts)
-  - curriculum_fit       (right level and specification coverage)
-  - adaptivity           (scaffolding appropriate to the profile
-                          note / knowledge state presented)
-  - clarity              (accessible to the intended learner)
-  - safety_appropriateness (nothing unsuitable for a school context)
-Scale: 1-5 Likert + free-text comment per criterion.
+``CRITERIA`` below is a working draft, not yet signed off with the
+supervisor — see docs/TODO.md. The CSV/JSONL schema is generic (criterion
+name + 1-5 + comment), so revising the list is a small edit, not a
+tooling rebuild.
 
-DONE (2026-08-14): the reviewer interface is CSV export/import
-(confirmed with the user — the SENCO reviewer works in a spreadsheet,
-not a custom tool). ``export_review_csv`` turns a transcript run (see
-``run_scenarios.py``) into one row per (scenario, criterion) with the
-transcript inline and rating/comment columns left blank;
-``import_review_csv`` reads it back after they've filled it in, validating
-each row through the same ``record_rating`` this module already had.
-``generate_report`` produces the descriptive-only Chapter 4 summary the
-TODO below asked for. The scenario set itself lives in
-``scenarios.py``/``scenarios.json``, run via ``run_scenarios.py`` — see
-those modules' docstrings for why they're separate from this one
-(this module owns the RUBRIC + REVIEW CAPTURE; those own the
-SCENARIO/TRANSCRIPT side).
+The reviewer interface is CSV export/import: ``export_review_csv`` turns a
+transcript run (``run_scenarios.py``) into one row per (scenario,
+criterion) with rating/comment left blank; ``import_review_csv`` reads it
+back, validating each row through ``record_rating``. ``generate_report``
+produces the descriptive-only summary.
 
-TODO:
-    [ ] Finalise the rubric with the supervisor BEFORE the review
-        session — the CRITERIA below are a working draft only. The CSV/
-        JSONL schema is generic (criterion name + 1-5 + comment), so
-        revising the actual list is a small edit here, not a rebuild of
-        the export/import/report tooling.
-    [ ] Consent + information sheet references per the ethics application;
-        reviewer identified by role only (``reviewer_role``, never a
-        name — this file, ``scenarios.json``, and every generated
-        artifact must never contain the SENCO reviewer's actual name).
+The scenario set lives in ``scenarios.py``/``scenarios.json``, run via
+``run_scenarios.py`` — this module owns the rubric and review capture;
+those own the scenario/transcript side.
+
+The reviewer is identified by role only (``reviewer_role``); this file,
+``scenarios.json``, and every generated artifact must never contain the
+reviewer's actual name.
 """
 
 from __future__ import annotations
@@ -158,13 +140,11 @@ def import_review_csv(
 
 
 def generate_report(results_path: Path = RESULTS_PATH) -> str:
-    """Descriptive-only summary for Chapter 4 — counts, mean, and range
-    per criterion, plus every non-empty comment quoted verbatim against
-    its scenario. Deliberately no inferential statistics (no
-    significance claims, no p-values, no cross-criterion comparison) —
-    a single reviewer's ratings don't support that, and the analysis
-    plan says so plainly rather than overclaiming (see module docstring
-    TODO history)."""
+    """Descriptive-only summary: counts, mean, and range per criterion,
+    plus every non-empty comment quoted verbatim against its scenario.
+    Deliberately no inferential statistics (no significance claims, no
+    p-values, no cross-criterion comparison) — a single reviewer's
+    ratings don't support that."""
     records = [ReviewRecord(**r) for r in _load_jsonl(results_path)] if results_path.exists() else []
 
     lines = ["# Expert review — descriptive summary", ""]

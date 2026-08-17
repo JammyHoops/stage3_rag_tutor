@@ -1,37 +1,25 @@
 """FastAPI surface for Stage 3.
 
-PROVENANCE — /health and /feedback KEPT (adapted) from AI_IT_Helpdesk
-``services/kb_agent/api.py``; the duplicate RAG API stack
-(``services/rag_api/``) was removed rather than merged — it re-implemented
-ingestion, chunking and prompting against a second Chroma client and a
-deprecated SDK. One stack only.
+PROVENANCE — /health and /feedback KEPT (adapted) from AI_IT_Helpdesk; the
+duplicate RAG API stack was removed rather than merged. /feedback is the
+write side of the retrieval feedback loop (counters read back by the
+reranker) — during expert evaluation, a reviewer's chunk-relevance
+judgements can be committed through it.
 
-WHY /feedback KEPT: it is the write side of the retrieval feedback loop
-(counters read back by the reranker). During expert evaluation the
-reviewer's chunk-relevance judgements can be committed through it.
+/subjects, /subjects/{subject}/topics, and /conversations* (chat.py
+router) are NEW — see stage3/api/chat.py for the conversation/chat
+backend that supports a Claude-Projects-style UI. /students* (students.py
+router) are also NEW — a student directory (derived from who has
+conversations; no real login exists) and a mastery read-through.
 
-/subjects, /subjects/{subject}/topics, and /conversations* (chat.py router)
-are NEW — see stage3/api/chat.py for the conversation/chat backend that
-supports a Claude-Projects-style UI (subject = project, topic = chat).
-/students* (students.py router, added 2026-08-16) are also NEW — a
-student directory (derived from who has conversations, no real login
-exists) and a mastery read-through, powering the frontend's searchable
-student picker and inline mastery indicator.
+/tutor below is superseded, not pending: the conversation/chat backend
+(chat.py's router) is the live tutoring path the frontend actually calls.
+/tutor was an earlier single-shot sketch before the conversational design
+was settled — left as a deliberate 501 rather than removed, in case a
+non-conversational integration ever needs one.
 
-RETIRED (2026-08-16 cleanup pass) — /tutor below is superseded, not
-pending. The conversation/chat backend (chat.py's router, above) is the
-live tutoring path: it wires redaction, retrieval, mastery, explanation-
-method selection and CC attribution end-to-end, and is what the frontend
-actually calls. /tutor was an earlier single-shot sketch of the same idea
-before the conversational (subject/topic-threaded) design was settled —
-left as a deliberate 501 rather than removed outright, in case a
-non-conversational integration (e.g. a future Stage 2 batch-submission
-path) ever needs one. Do not wire this up without first checking whether
-chat.py already covers the use case.
-
-TODO:
-    [ ] Access: local-only during the project (bind 127.0.0.1); no
-        student-facing deployment is in scope for the dissertation.
+No student-facing deployment is in scope — local-only for the project
+(bind 127.0.0.1).
 """
 
 from __future__ import annotations

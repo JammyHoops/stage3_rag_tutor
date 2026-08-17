@@ -368,11 +368,16 @@ gap noted below.
 - **Concept-ID granularity.** Resolved as far as "what is a concept" —
   see above. The `prerequisites` graph itself remains open.
 
-**Cross-stage dependency:** the trigger's Stage 1 half needs a
-per-subject *attainment magnitude* ("below demonstrated GCSE attainment for
-that subject"), not just the binary `flagged` / `flag_subjects` the current
-placeholder schema in `profiles/stage1_loader.py` provides. Worth raising
-with whoever owns the Stage 1 export shape before that's fixed.
+**Cross-stage dependency, RESOLVED 2026-08-16:** the trigger's Stage 1
+half needs a per-subject *attainment magnitude* ("below demonstrated
+GCSE attainment for that subject") — this note used to flag that the
+placeholder schema only had a binary flag. The real schema
+(`profiles/stage1_loader.py`) provides exactly this now:
+`attainment_band` (`well_below`/`below`/`in_line`/`above`), per
+(student, subject) — see README's "Stage 1 wiring" section. Not yet
+wired into this trigger specifically (only into `profile_to_note`/
+`attainment_band_to_prior` so far), but the data half of this dependency
+is no longer missing — only the `prerequisites` graph blocks this now.
 
 Work items, roughly in dependency order:
 
@@ -887,3 +892,16 @@ resets, no manual fix needed. 2 of 3 cases fully round-tripped with real
 generation; the 3rd demonstrated the fail-loud path working correctly
 under a real, external, already-documented constraint, not a bug. 215/215
 tests pass (22 new).
+
+**Real (non-synthetic, ethics-approved) Stage 1 data is deliberately NOT
+being pursued** (user decision, 2026-08-16) — not deferred, retired, same
+treatment as the mathematics/English scope narrowing above. Reasoning:
+this project's evaluation instrument (see "Evaluation instrument" below)
+is a qualitative SENCO expert review of transcripts, not a comparative
+outcomes study — there is no control group or pre/post design for real
+Stage 1 data to be weighed against. Without that, real numbers would
+prove the same mechanism the synthetic fixture already proves end-to-end
+(see the live-verification above), at the cost of a real ethics-approval
+process, for no additional evaluative power. The synthetic fixture stays
+the permanent, sufficient fixture for this feature — not a stand-in
+waiting to be replaced.

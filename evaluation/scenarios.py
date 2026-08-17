@@ -1,23 +1,14 @@
 """Fixed, reproducible scenario definitions for expert review.
 
-PROVENANCE — NEW. Closes the "build the scenario set" TODO in
-``expert_review.py``: fixed inputs (synthetic knowledge state, synthetic
-profile note) so a review session is reproducible and involves NO real
-student data — see that module's docstring for the full evaluation
-design.
+PROVENANCE — NEW. Fixed inputs (synthetic knowledge state, synthetic
+profile note) so a review session is reproducible and involves no real
+student data.
 
-Data lives in ``scenarios.json`` (same pattern as
-``data/topics/<subject>.json`` — plain JSON, hand-editable, this loader
-stays thin). The first draft's CONTENT was written by Claude and is
-meant to be edited, not treated as final — see ``run_scenarios.py``'s
-module docstring for why nothing runs against the real LLM until that
-edit pass happens.
-
-``mastery_rows`` is fed through ``tutor/context_builder.py::
-summarise_state`` at run time (see ``run_scenarios.py``), not
-hand-written as a matching string here — that way a scenario's
-"knowledge state" text can never drift from what the real bucketing
-logic actually produces.
+Data lives in ``scenarios.json`` (plain JSON, hand-editable; this loader
+stays thin). ``mastery_rows`` is fed through
+``tutor/context_builder.py::summarise_state`` at run time rather than
+hand-written as a matching string, so a scenario's "knowledge state" text
+can never drift from what the real bucketing logic produces.
 """
 
 from __future__ import annotations

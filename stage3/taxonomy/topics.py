@@ -1,27 +1,16 @@
 """Controlled subject/topic taxonomy for the tutoring UI.
 
 PROVENANCE — NEW. Supports a Claude-Projects-style UI: subject = project,
-topic = chat within that project. Topics are a FIXED, curriculum-authored
-list per subject — students do not invent topics. Free-text topic naming
-and a teacher-facing topic-authoring UI are deferred; for now these files
-are hand-edited directly, which also means a future authoring UI would just
-write the same file shape.
+topic = chat within that project. Topics are a fixed, curriculum-authored
+list per subject; students don't invent topics. These files are
+hand-edited directly — no authoring UI yet, see docs/TODO.md.
 
 Expected layout under data/topics/ (one file per subject):
 
     data/topics/<subject>.json
-    e.g. data/topics/mathematics.json ->
-        {"subject": "mathematics",
-         "topics": [{"id": "algebra", "label": "Algebra"}, ...]}
-
-The subject slug should match the corresponding data/curriculum/<subject>/
-directory by convention (not enforced here — retrieval stays subject-scoped
-only; topic is not yet wired into curriculum chunk metadata, see
-connectors/curriculum_docs.py TODO).
-
-TODO:
-    [ ] Teacher-facing topic authoring UI (writes these same JSON files).
-    [ ] Validate subject slugs against data/curriculum/ at ingest time.
+    e.g. data/topics/biology.json ->
+        {"subject": "biology",
+         "topics": [{"id": "genetics", "label": "Genetics"}, ...]}
 """
 
 from __future__ import annotations

@@ -1,69 +1,43 @@
 """Typed-chat turn handler — parallel to, not a replacement for, session.py.
 
 PROVENANCE — NEW. ``tutor/session.py::run_turn`` is file-handoff shaped (it
-takes a ``Submission`` produced by the Stage 2 MATLAB bridge). It has no
+takes a ``Submission`` produced by the Stage 2 MATLAB bridge) with no
 notion of an ongoing conversation. This module adds that: a chat turn
-belongs to a persistent ``conversations`` thread (see
-``conversations/store.py``) keyed by (student, subject, topic) and carries a
-bounded window of prior turns into the prompt as ``conversation_history``
-(see ``tutor/prompt_template.py``).
+belongs to a persistent ``conversations`` thread (``conversations/
+store.py``) keyed by (student, subject, topic), and carries a bounded
+window of prior turns into the prompt as ``conversation_history``.
 
-Same fail-closed guarantee as ``run_turn``: ``redaction.redact()`` is called
-on every student message before anything else happens, and is expected to
-raise ``NotImplementedError`` until redaction is implemented — this module
-does not work around that, it inherits it.
+Mastery is only updated via the diagnostic mechanism
+(``start_diagnostic`` / ``_run_diagnostic_answer_turn``); normal tutoring
+turns never call ``record_observation`` directly — see
+``tutor/diagnostic.py``.
 
-DONE (2026-08-13): the mastery update rule is chosen (see
-student_state/store.py's DECISION note) and IS wired in here now, but
-only through the diagnostic mechanism (``start_diagnostic`` /
-``_run_diagnostic_answer_turn``) — normal tutoring turns still don't call
-``record_observation`` (confirmed with the user: mastery is diagnostic-
-seeded, not continuously re-graded during ordinary tutoring). See
-``tutor/diagnostic.py`` for the question-asking/grading mechanism.
+Explanation-method selection (``student_state/explanation_method.py``) is
+wired into the normal-tutoring branch only. If the top retrieved
+curriculum chunk carries a ``concept_id``, a method is Thompson-sampled
+each normal turn and logged as a pending interaction; if the previous
+turn's pending interaction was about the same concept, the same LLM call
+also grades whether the student's answer demonstrated understanding (a
+trailing ``[[UNDERSTANDING: yes|no]]`` marker, stripped before display).
+A subject with no curriculum content never resolves a concept_id, so this
+degrades to a no-op there.
 
-DONE (2026-08-14): explanation-method selection (see
-``student_state/explanation_method.py`` and
-``docs/design/stage3-explanation-method-design.md``) is wired into the
-NORMAL-tutoring branch only (never the diagnostic branch — separate
-concern: method selection is about *how* to explain, the diagnostic is a
-baseline assessment). Each normal turn, IF the top retrieved curriculum
-chunk carries a ``concept_id`` (i.e. real curriculum content exists for
-this subject): a method is Thompson-sampled and logged as a pending
-interaction, and — if last turn's pending interaction was about the SAME
-concept_id — the single tutoring LLM call also grades whether the
-student's just-submitted answer demonstrated understanding (trailing
-``[[UNDERSTANDING: yes|no]]`` marker, stripped before display). Subjects
-with no curriculum content (mathematics/english) never resolve a
-concept_id, so this is a clean no-op there — same graceful degradation
-as the rest of context_builder.py.
+A hard LLM failure (``llm/client.py``'s ``LLMGenerationError``) propagates
+straight out of every entry point here without this module needing to
+check anything — no message gets persisted, no progress advances, for a
+turn that never produced an answer. ``api/chat.py`` catches it and turns
+it into a 503.
 
-DONE (2026-08-14): the empty-answer failure path is resolved — see
-``llm/client.py``'s ``LLMGenerationError``. ``generate`` now raises on
-hard failure instead of returning ``""``, so a failed call here
-propagates straight out of ``start_diagnostic`` /
-``_run_diagnostic_answer_turn`` / ``run_chat_turn`` without this module
-needing to check anything — no message gets persisted, no diagnostic
-progress advances, no method interaction gets logged, for a turn that
-never actually produced an answer. ``api/chat.py`` is where it's finally
-caught and turned into a 503.
+``prompt.attributions`` (``tutor/attribution.py``) is passed to every
+``add_message(role="tutor", ...)`` call site, diagnostic turns included.
 
-DONE (2026-08-16): CC attribution wired through — ``prompt.attributions``
-(see ``tutor/attribution.py``) is now passed to every real
-``add_message(role="tutor", ...)`` call site, including the diagnostic
-ones (diagnostic questions are grounded in the same licensed content and
-carry the same obligation, previously overlooked). Stored once per
-message alongside ``chunk_doc_ids``, not re-derived on read.
-
-DONE (2026-08-16): real Stage 1 wiring, cold-start only —
-``start_diagnostic`` now optionally takes ``student_id``/``profiles`` and
-uses them ONCE, at the one genuinely cold-start moment (see
-``tutor/context_builder.py``'s module docstring for why that's here and
-not the normal-tutoring path): a one-time diagnostic-opening TEACHING
-NOTE (``profile_to_note``) and a one-time mastery prior written before
-the first real observation (``attainment_band_to_prior`` +
-``student_state/store.py::seed_mastery_prior``). ``run_chat_turn`` no
-longer takes a ``profiles`` parameter at all — its only use was passing
-through to ``build_context``, which no longer touches Stage 1 data.
+``start_diagnostic`` optionally takes ``student_id``/``profiles`` and uses
+them once, at the one genuinely cold-start moment: a one-time
+diagnostic-opening teaching note (``profile_to_note``) and a one-time
+mastery prior (``attainment_band_to_prior`` +
+``student_state/store.py::seed_mastery_prior``). See
+``tutor/context_builder.py``'s docstring for why it lives here and not
+the normal-tutoring path.
 """
 
 from __future__ import annotations
@@ -113,9 +87,7 @@ class ChatTurnResponse:
 
 def _topic_label(subject: str, topic: str) -> str:
     """Best-effort human-readable label for prompt text — falls back to
-    the raw topic id if the taxonomy lookup misses (should not happen for
-    a topic already validated at conversation-creation time, but this is
-    prompt text, not a security boundary, so degrade gracefully)."""
+    the raw topic id if the taxonomy lookup misses."""
     topic_obj = get_topic(subject, topic)
     return topic_obj.label if topic_obj else topic
 
@@ -131,20 +103,16 @@ def start_diagnostic(
     """Generate and store the opening question of a diagnostic round.
 
     Called synchronously right after a conversation is created, or when a
-    fresh round is explicitly requested (see api/chat.py's /reassess
-    endpoint) — the tutor speaks first, with no preceding student message.
+    fresh round is explicitly requested (api/chat.py's /reassess endpoint)
+    — the tutor speaks first, with no preceding student message.
 
-    ``student_id``/``profiles`` are optional and should ONLY be passed for
-    a genuinely first-ever diagnostic round (api/chat.py's
-    ``post_conversation`` — never ``/reassess``, deliberately, since a
-    re-check means the student already has tutoring history and this is
-    no longer "cold start" — see tutor/context_builder.py's module
-    docstring). When given, this is the one place Stage 1 data is allowed
-    to touch anything: a one-time TEACHING NOTE in the opening prompt
-    (``profile_to_note``) and a one-time mastery prior written BEFORE the
-    first real observation (``attainment_band_to_prior`` +
-    ``seed_mastery_prior``). Omitted (the default) degrades cleanly to
-    the prior no-Stage-1 behaviour — no note, no seed.
+    ``student_id``/``profiles`` should only be passed for a genuinely
+    first-ever diagnostic round (api/chat.py's ``post_conversation``,
+    never ``/reassess``): the one place Stage 1 data is allowed to touch
+    anything, a one-time teaching note (``profile_to_note``) and a
+    one-time mastery prior (``attainment_band_to_prior`` +
+    ``seed_mastery_prior``). Omitted, the default, degrades cleanly to no
+    note and no seed.
     """
     llm = llm or get_client()
     topic_label = _topic_label(subject, topic)
@@ -295,10 +263,8 @@ def run_chat_turn(
         topic=topic,
     )
 
-    # Explanation-method selection — see module docstring "DONE
-    # (2026-08-14)". concept_id comes from the top retrieved chunk; no
-    # chunk / no concept_id (e.g. mathematics/english, no curriculum
-    # ingested) means this whole mechanism is a clean no-op this turn.
+    # concept_id comes from the top retrieved chunk; no chunk / no
+    # concept_id means explanation-method selection is a clean no-op.
     top_chunk = bundle.curriculum_chunks[0] if bundle.curriculum_chunks else None
     concept_id = top_chunk.get("concept_id") if top_chunk else None
 
@@ -317,15 +283,13 @@ def run_chat_turn(
         redacted_student_text=safe_text,
         curriculum_chunks=bundle.curriculum_chunks,
         knowledge_state_summary=bundle.knowledge_state_summary,
-        profile_note=bundle.profile_note,
         conversation_history=history,
         explanation_method=explanation_method,
         pending_understanding_check=pending_check,
     )
 
     raw = llm.generate(prompt.user, system=prompt.system)
-    # Empty-answer path resolved generically — see module docstring's
-    # DONE (2026-08-14) note. A hard failure raises past this point.
+    # A hard LLM failure raises past this point; see llm/client.py.
     answer, understood = parse_understanding_marker(raw)
 
     if pending_check is not None and understood is not None:

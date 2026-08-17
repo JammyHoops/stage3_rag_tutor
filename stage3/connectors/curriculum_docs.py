@@ -1,33 +1,18 @@
 """Connector for curriculum documents on local disk.
 
-PROVENANCE — NEW, but follows the pattern of the helpdesk's
-``rasa_transcripts.py`` connector (walk a directory, normalise each file
-into the standard document schema). Replaces the removed IT-specific
-connectors (spiceworks, papercut, microsoft_support, google_support),
-which had no use in a tutoring context.
+PROVENANCE — NEW. Follows the pattern of the helpdesk's transcript
+connector (walk a directory, normalise each file into the standard
+document schema).
+
+Not currently wired to any real content — every in-scope subject is
+sourced from Isaac Science / Ada Computer Science instead (see those
+connectors). Kept in case a genuinely document-only source (e.g. a
+locally-supplied spec PDF) is ever added — see docs/TODO.md.
 
 Expected layout under data/curriculum/ (drives metadata):
 
     data/curriculum/<subject>/<provenance_tier>/<files>
     e.g. data/curriculum/biology/awarding_body_spec/organisms.md
-
-RETIRED (2026-08-16 cleanup pass) — NOT DOING, no active driver. Subject
-scope was confirmed 2026-08-14 as exactly three subjects (biology,
-chemistry, computer_science), and every source actually collected for
-that scope (Isaac Science, Ada Computer Science) has its own dedicated
-connector with native structure-aware ingestion — this generic
-local-filesystem connector was never wired to a real subject directory
-and has no content under data/curriculum/. The taxonomy/PDF-extraction/
-topic-metadata/copyright questions below were speculative for a source
-that never materialised; keep this list only in case a genuinely
-document-only source (e.g. a locally-supplied spec PDF) is ever added:
-    - Subject/topic taxonomy alignment.
-    - PDF extraction (pypdf / pdfplumber, kept local).
-    - Topic-level metadata assignment (per file / heading / manifest).
-    - Copyright position on ingesting exam-board materials for research
-      use (would need ethics/write-up documentation).
-    - Non-text content (diagrams, equations) — likely a documented
-      limitation, mirroring the cursive-writing decision in Stage 2.
 """
 
 from __future__ import annotations
@@ -38,8 +23,7 @@ from typing import Any
 from ..config import CONFIG
 from .base import Connector
 
-# File types readable without extraction libraries. PDF extraction was
-# never added — see RETIRED note above.
+# File types readable without extraction libraries; no PDF support yet.
 _TEXT_EXTS = {".md", ".txt"}
 
 

@@ -1,39 +1,27 @@
 """Seed a handful of synthetic demo students for UI walkthroughs.
 
-PROVENANCE — NEW (2026-08-16, usability pass). A fresh clone has no
-students at all — there is no login, so the only "known students" the
-searchable picker (components/StudentSelect) or the mastery indicator can
-show is whoever has actually used the system. This script exists purely
-so an examiner (or anyone else) opening a fresh clone has something to
-click through immediately, without needing to manually work through a
-diagnostic round first.
+PROVENANCE — NEW. A fresh clone has no students at all — there's no
+login, so the only "known students" the searchable picker or mastery
+indicator can show is whoever has actually used the system. This script
+gives an examiner (or anyone else) opening a fresh clone something to
+click through immediately.
 
-**FABRICATED, SYNTHETIC DEMO DATA — FOR UI WALKTHROUGH ONLY.** Every
-student id uses the ``demo-`` prefix specifically so it is never mistaken
-for a real student, and every observation this script writes uses
-``source="demo_seed"`` (student_state/store.py's ``source`` column is
-free-text and already distinguishes real diagnostic-derived rows via
-``source="diagnostic"`` — this reuses that field rather than inventing a
-parallel one). This is NOT dissertation evidence and must never be
-conflated with the real, quota-paced, pipeline-driven scenario runner in
-``evaluation/`` — that stays completely untouched by this script.
+Fabricated, synthetic demo data, for UI walkthrough only. Every student id
+uses the ``demo-`` prefix so it's never mistaken for a real student, and
+every observation uses ``source="demo_seed"`` (reusing the existing
+`source` column rather than inventing a parallel one). Not dissertation
+evidence, and never conflated with the real scenario runner in
+``evaluation/``.
 
-Deliberately does NOT call the live LLM: zero quota cost (the Gemini
-free-tier daily cap is a real, documented constraint — see
-llm/client.py), deterministic, fast, and there is no honest way to get a
-"realistic-looking" *varied* spread of mastery values out of a live
-diagnostic round without either burning real quota running it three
-students' worth of times, or grading it with NullLLM's fixed canned
-response (which would make every observation identical, defeating the
-point). Instead this calls the same real store functions a live turn
-would — get_or_create_conversation, add_message, set_diagnostic_progress,
-record_observation — just with synthetic inputs, so the seeded rows are
-produced by the real persistence layer, not a fabricated parallel shape.
-The one live/local (not LLM) touch: each seeded topic's tutor message
-attaches REAL citations via retriever/search.py::search_kb +
-tutor/attribution.py::build_attributions (both offline/local, no network
-call beyond the already-ingested local vectordb) so the citation UI is
-demoable too, on top of synthetic prose.
+Does not call the live LLM: zero quota cost, deterministic, fast. Instead
+this calls the same real store functions a live turn would
+(``get_or_create_conversation``, ``add_message``,
+``set_diagnostic_progress``, ``record_observation``) with synthetic
+inputs, so the seeded rows are produced by the real persistence layer.
+Each seeded topic's tutor message also attaches real citations via
+``retriever/search.py::search_kb`` + ``tutor/attribution.py::
+build_attributions`` (offline/local, no network call beyond the
+already-ingested local vectordb).
 
 Usage (from repo root, with requirements installed):
     python scripts/seed_demo_students.py
@@ -65,12 +53,11 @@ from stage3.taxonomy.topics import get_topic  # noqa: E402
 DEMO_SOURCE = "demo_seed"
 
 # student_id -> subject -> topic_id -> sequence of outcomes fed through
-# record_observation in order (EWMA, alpha=0.35 — see student_state/
-# store.py). Deliberately varied per student so the picker/dashboard has
-# something worth looking at: student-1 strong in biology, weak in CS,
-# chemistry untouched; student-2 balanced across all three; student-3
-# just started (a single topic, one observation) — between them all three
-# MasteryBar states (no data / low / mixed / high) are demoable.
+# record_observation in order (EWMA, alpha=0.35). Varied per student so
+# the picker/dashboard has something to look at: student-1 strong in
+# biology, weak in CS, chemistry untouched; student-2 balanced across all
+# three; student-3 just started. Between them, all four MasteryBar states
+# (no data / low / mixed / high) are demoable.
 DEMO_STUDENTS: dict[str, dict[str, dict[str, list[float]]]] = {
     "demo-student-1": {
         "biology": {"biochemistry": [1.0, 1.0], "genetics": [0.5, 1.0]},

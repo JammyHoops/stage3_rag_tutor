@@ -1,25 +1,16 @@
 """Durable chat/conversation storage — one thread per (student, subject, topic).
 
 PROVENANCE — NEW. Supports a Claude-Projects-style UI: subject = project,
-topic = chat within that project.
+topic = chat within that project. Topic and conversation are 1:1 (one
+continuous thread per (student, subject, topic), enforced by the UNIQUE
+constraint below), so every topic in the frontend's fixed taxonomy is
+directly clickable as a chat — ``get_or_create_conversation`` is the entry
+point, not ``create_conversation`` directly.
 
-DESIGN DECISION (2026-08-13, confirmed with the user): topic and
-conversation are 1:1 — there is exactly one continuous thread per
-(student, subject, topic), enforced by a UNIQUE constraint below, not a
-free list of many chats per topic. This matches how
-``student_state/store.py`` already tracks mastery per (student, subject,
-topic) with no session concept, and is why every topic in the frontend's
-fixed taxonomy is directly clickable and "prepopulated" as a chat —
-``get_or_create_conversation`` is the entry point, not
-``create_conversation`` directly.
-
-Deliberately kept in its OWN SQLite file
-(``CONFIG.paths.conversations_db``), separate from
-``student_state/store.py``, whose schema and docstring are explicitly
-mastery-only (``observations``/``mastery``). Conversation transcripts are a
-different concern — turn-by-turn chat history, not a knowledge-state
-estimate — and keeping them in a separate file preserves that documented
-boundary rather than overloading one db with two purposes.
+Kept in its own SQLite file (``CONFIG.paths.conversations_db``), separate
+from ``student_state/store.py`` — that file's schema is mastery-only;
+conversation transcripts are a different concern (turn-by-turn chat
+history, not a knowledge-state estimate).
 
 SCHEMA:
     conversations : one row per chat thread
@@ -28,14 +19,9 @@ SCHEMA:
                     (conversation_id, role ['student'|'tutor'], content,
                      chunk_doc_ids [JSON list, tutor turns only], created_at)
 
-DESIGN DECISION: ``content`` is always stored POST-REDACTION. Rows are
-replayed back into prompts as conversation history (see
-tutor/chat_session.py), so they must already carry the same privacy
-guarantee ``redaction.redact()`` provides — never the raw student message.
-
-Known limitation: topic is bookkeeping only here; it is not yet wired into
-retrieval filtering (see retriever/search.py — curriculum chunks carry no
-topic metadata, connectors/curriculum_docs.py TODO).
+``content`` is always stored post-redaction: rows are replayed back into
+prompts as conversation history, so they must already carry the same
+privacy guarantee ``redaction.redact()`` provides.
 """
 
 from __future__ import annotations
